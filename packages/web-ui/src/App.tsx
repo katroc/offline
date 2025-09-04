@@ -20,6 +20,12 @@ function App() {
   const [space, setSpace] = useState('');
   const [labels, setLabels] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
+    if (saved === 'light' || saved === 'dark') return saved;
+    const prefersLight = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    return prefersLight ? 'light' : 'dark';
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -28,6 +34,11 @@ function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,42 +103,81 @@ function App() {
 
   return (
     <div className="app">
-      <div className="chat-container">
-        <header className="chat-header">
-          <h1>Air-Gapped Confluence AI</h1>
-          <div className="filters">
-            <input
-              type="text"
-              placeholder="Space (optional)"
-              value={space}
-              onChange={(e) => setSpace(e.target.value)}
-              className="filter-input"
-            />
-            <input
-              type="text"
-              placeholder="Labels (comma-separated)"
-              value={labels}
-              onChange={(e) => setLabels(e.target.value)}
-              className="filter-input"
-            />
+      <div className="workspace">
+        <header className="workspace-header">
+          <div className="header-content">
+            <div className="header-title">
+              <h1>Claude</h1>
+              <div className="model-info">
+                <span className="model-badge">Documentation Assistant</span>
+              </div>
+            </div>
+            <div className="header-actions">
+              <button
+                type="button"
+                className="header-button"
+                title="Toggle theme"
+                onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+                aria-label="Toggle theme"
+              >
+                {theme === 'light' ? (
+                  // Moon icon
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                ) : (
+                  // Sun icon
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <circle cx="12" cy="12" r="4"/>
+                    <path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.364-7.364-1.414 1.414M8.05 16.95l-1.414 1.414m0-13.728L8.05 6.05m9.9 9.9 1.414 1.414"/>
+                  </svg>
+                )}
+              </button>
+              <button className="header-button" title="New conversation">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                  <polyline points="9,22 9,12 15,12 15,22"/>
+                </svg>
+              </button>
+              <button className="header-button" title="Settings">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 1v6m0 6v6"/>
+                  <path d="m21 12-6 0m-6 0-6 0"/>
+                </svg>
+              </button>
+            </div>
           </div>
-        </header>
-
-        <div className="chat-messages">
-          {messages.length === 0 && (
-            <div style={{ textAlign: 'center', color: '#666', marginTop: '2rem' }}>
-              Ask a question about your Confluence content
+          {(space || labels) && (
+            <div className="filters">
+              <input
+                type="text"
+                placeholder="Filter by space (optional)"
+                value={space}
+                onChange={(e) => setSpace(e.target.value)}
+                className="filter-input"
+              />
+              <input
+                type="text"
+                placeholder="Filter by labels (comma-separated)"
+                value={labels}
+                onChange={(e) => setLabels(e.target.value)}
+                className="filter-input"
+              />
             </div>
           )}
+        </header>
+
+        <div className="conversation">
+          {/* Empty state intentionally minimal in enterprise layout */}
           
           {messages.map((message) => (
             <div key={message.id} className={`message message-${message.type}`}>
-              <div className="message-bubble">
+              <div className="message-content">
                 {message.content}
               </div>
               {message.citations && message.citations.length > 0 && (
                 <div className="message-citations">
-                  <strong>Sources:</strong>
                   {message.citations.map((citation, index) => (
                     <a
                       key={index}
@@ -136,7 +186,7 @@ function App() {
                       rel="noopener noreferrer"
                       className="citation"
                     >
-                      {citation.title}
+                      {index + 1}. {citation.title}
                       {citation.sectionAnchor && ` (${citation.sectionAnchor})`}
                     </a>
                   ))}
@@ -147,8 +197,8 @@ function App() {
           
           {isLoading && (
             <div className="message message-assistant">
-              <div className="message-bubble loading">
-                Thinking...
+              <div className="message-content loading">
+                Searching documentation and generating response...
               </div>
             </div>
           )}
@@ -156,7 +206,7 @@ function App() {
           <div ref={messagesEndRef} />
         </div>
 
-        <form onSubmit={handleSubmit} className="chat-input">
+        <form onSubmit={handleSubmit} className="input-area">
           <input
             type="text"
             value={input}
