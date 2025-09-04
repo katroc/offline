@@ -1,0 +1,49 @@
+### Node / Package Managers
+node_modules/
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+### TypeScript build output
+dist/
+build/
+*.tsbuildinfo
+
+### Monorepo package builds (redundant but explicit)
+packages/*/dist/
+tools/*/dist/
+
+### Environment files (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+
+### Coverage / Testing
+coverage/
+.nyc_output/
+
+### Vite / Frontend caches
+.vite/
+node_modules/.vite/
+
+### OS / Editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sw?
+*.orig
+
+### Local data / DBs
+data/
+bugger.db-*
+*.sqlite
+*.db
+
+### Misc
+logs/
+*.pid

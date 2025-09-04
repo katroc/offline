@@ -1,0 +1,22 @@
+{
+  "name": "@app/mcp-server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/main.js",
+  "types": "dist/main.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.11",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@app/shared": "file:../shared",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1"
+  }
+}

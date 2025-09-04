@@ -1,0 +1,60 @@
+import './env.js';
+import Fastify from 'fastify';
+import { generateRequestId, logRequestStart, logRequestEnd, logError } from './logger.js';
+import { validateRagQuery } from './validation.js';
+import { ragQuery } from './orchestrator.js';
+
+const port = Number(process.env.MCP_PORT || 8787);
+const host = String(process.env.MCP_HOST || '127.0.0.1');
+
+const app = Fastify({ logger: false });
+
+// Request ID + basic logging hooks
+app.addHook('onRequest', async (req, reply) => {
+  const startedAt = Date.now();
+  // Attach timing to request context
+  (req as any).startedAt = startedAt;
+  const incoming = req.headers['x-request-id'];
+  const reqId = String(incoming || generateRequestId());
+  reply.header('x-request-id', reqId);
+  (req as any).reqId = reqId;
+  logRequestStart({ reqId, method: req.method, url: req.url });
+});
+
+app.addHook('onResponse', async (req, reply) => {
+  const reqId = (req as any).reqId as string | undefined;
+  const startedAt = (req as any).startedAt as number | undefined;
+  logRequestEnd({ reqId: reqId || '-', method: req.method, url: req.url, status: reply.statusCode, startedAt: startedAt || Date.now() });
+});
+
+// Health
+app.get('/health', async () => ({ status: 'ok' }));
+
+// RAG query (using our validator + orchestrator stub)
+app.post('/rag/query', async (req, reply) => {
+  try {
+    const result = validateRagQuery(req.body as unknown);
+    if (!result.ok) {
+      return reply.code(400).send({ error: result.error });
+    }
+    const { question, space, labels, updatedAfter, topK } = result.value;
+    const rag = await ragQuery({ question, space, labels, updatedAfter, topK });
+    return reply.send({ ...rag, meta: { request: { space, labels, updatedAfter, topK } } });
+  } catch (err) {
+    const reqId = (req as any).reqId as string | undefined;
+    logError({ reqId, method: req.method, url: req.url, err });
+    return reply.code(400).send({ error: 'invalid JSON body' });
+  }
+});
+
+// Default route
+app.all('/*', async (req) => ({ name: 'mcp-server', message: 'scaffold running', path: req.url, method: req.method }));
+
+app.listen({ port, host }).then(() => {
+  // eslint-disable-next-line no-console
+  console.log(`MCP server (Fastify) listening on ${host}:${port}`);
+}).catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('Server failed to start', err);
+  process.exit(1);
+});

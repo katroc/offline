@@ -1,0 +1,11 @@
+{
+  "name": "@app/web-ui",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"ui: pending Vite scaffold\"",
+    "build": "echo \"ui: pending Vite scaffold\"",
+    "typecheck": "echo \"ui: pending scaffold\""
+  }
+}
+

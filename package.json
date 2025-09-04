@@ -1,0 +1,24 @@
+{
+  "name": "airgapped-confluence-assistant",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@9.5.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "echo \"lint is deferred until dependencies are staged\"",
+    "test": "echo \"tests will run once dependencies are staged\""
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.11",
+    "typescript": "^5.5.4"
+  }
+}
