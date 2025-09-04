@@ -3,7 +3,7 @@ import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces
 import { LocalDocStore } from '../store/local-doc-store.js';
 import type { VectorStore, VectorSearchResult } from './vector-store.js';
 import type { Chunker } from './chunker.js';
-import { rankDocumentsByRelevance } from './llm-search.js';
+import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
 
 export interface RAGPipeline {
   retrieveForQuery(query: string, filters: Filters, topK: number): Promise<RetrievalResult>;
@@ -29,7 +29,9 @@ export class DefaultRAGPipeline implements RAGPipeline {
 
     // 1. Get candidate documents
     let documents: DocumentSource[] = [];
-    if (this.localDocStore && this.localDocStore.size() > 0) {
+    const preferLive = String(process.env.PREFER_LIVE_SEARCH || '').toLowerCase() === 'true';
+
+    if (!preferLive && this.localDocStore && this.localDocStore.size() > 0) {
       documents = this.localDocStore.queryCandidates(
         query,
         {
@@ -55,7 +57,23 @@ export class DefaultRAGPipeline implements RAGPipeline {
         console.log(`Found ${documents.length} candidate documents from live search`);
       } catch (error) {
         console.warn('Live document search failed:', error);
-        return { chunks: [], citations: [] };
+        // Fallback to local store if available
+        if (!preferLive && this.localDocStore && this.localDocStore.size() > 0) {
+          documents = this.localDocStore.queryCandidates(
+            query,
+            {
+              space: filters.space,
+              labels: filters.labels,
+              updatedAfter: filters.updatedAfter,
+              limit: 30,
+              start: 0
+            },
+            30
+          );
+          console.log(`Fallback: ${documents.length} candidate documents from local index`);
+        } else {
+          return { chunks: [], citations: [] };
+        }
       }
     }
 
@@ -68,11 +86,11 @@ export class DefaultRAGPipeline implements RAGPipeline {
     const rankedResults = await rankDocumentsByRelevance(query, documents, Math.min(topK, documents.length));
     console.log(`LLM ranked ${rankedResults.length} documents by relevance`);
 
-    // 3. Convert documents to chunks using the chunker, cap to topK total
-    const chunks: Chunk[] = [];
-    for (const result of rankedResults) {
-      if (chunks.length >= topK) break;
+    // 3. Chunk documents and score chunks by relevance to the query
+    type ScoredChunk = { chunk: Chunk; docId: string; docScore: number; chunkScore: number; combined: number };
+    const scored: ScoredChunk[] = [];
 
+    for (const result of rankedResults) {
       const doc = result.document;
       const page = {
         id: doc.id,
@@ -86,20 +104,38 @@ export class DefaultRAGPipeline implements RAGPipeline {
 
       try {
         const docChunks = await this.chunker.chunkDocument(page, doc.content);
-
-        // Prefer the first chunk (usually the intro/most relevant), but include more if room remains
         for (const ch of docChunks) {
-          if (chunks.length >= topK) break;
-          chunks.push(ch);
+          const chunkScore = simpleTextRelevanceScore(query, ch.text, ch.title);
+          // Blend doc-level LLM score with chunk-level keyword score
+          const combined = 0.6 * result.relevanceScore + 0.4 * chunkScore;
+          scored.push({ chunk: ch, docId: doc.id, docScore: result.relevanceScore, chunkScore, combined });
         }
       } catch (e) {
         console.warn('Chunking failed for document:', doc.id, e);
       }
     }
 
-    const citations = this.chunksTocitations(chunks);
-    console.log(`Returning ${chunks.length} chunks and ${citations.length} citations`);
-    return { chunks, citations };
+    if (scored.length === 0) {
+      console.log('No chunks produced from ranked documents');
+      return { chunks: [], citations: [] };
+    }
+
+    // 4. Select topK chunks globally with per-document cap to preserve diversity
+    const perDocCap = Math.max(1, Math.min(3, Math.floor(topK / 2) || 1));
+    const byDocPicked: Record<string, number> = {};
+    const selected: Chunk[] = [];
+
+    for (const s of scored.sort((a, b) => b.combined - a.combined)) {
+      if (selected.length >= topK) break;
+      const count = byDocPicked[s.docId] || 0;
+      if (count >= perDocCap) continue;
+      selected.push(s.chunk);
+      byDocPicked[s.docId] = count + 1;
+    }
+
+    const citations = this.chunksTocitations(selected);
+    console.log(`Returning ${selected.length} chunks and ${citations.length} citations`);
+    return { chunks: selected, citations };
   }
 
   async indexDocument(document: DocumentSource): Promise<void> {
@@ -216,10 +252,15 @@ export class DefaultRAGPipeline implements RAGPipeline {
     for (const chunk of chunks) {
       const key = `${chunk.pageId}-${chunk.sectionAnchor || 'main'}`;
       if (!citationMap.has(key)) {
+        // Prefer chunk.url if present; otherwise build from env base URL
+        const base = process.env.CONFLUENCE_BASE_URL || 'https://confluence.local';
+        const baseUrl = base.endsWith('/') ? base.slice(0, -1) : base;
+        const rawUrl = chunk.url || `${baseUrl}/pages/${chunk.pageId}`;
+        const url = chunk.sectionAnchor ? `${rawUrl}#${chunk.sectionAnchor}` : rawUrl;
         citationMap.set(key, {
           pageId: chunk.pageId,
           title: chunk.title,
-          url: `https://confluence.local/pages/${chunk.pageId}`, // TODO: Get from config
+          url,
           sectionAnchor: chunk.sectionAnchor
         });
       }

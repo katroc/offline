@@ -19,6 +19,7 @@ export interface Chunk {
   updatedAt: string; // ISO8601
   labels: string[];
   vector?: number[]; // optional until embedded
+  url?: string; // optional source URL for citations
 }
 
 export interface Citation {
@@ -46,4 +47,3 @@ export interface Filters {
   labels?: string[];
   updatedAfter?: string;
 }
-

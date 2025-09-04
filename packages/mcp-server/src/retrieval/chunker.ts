@@ -96,7 +96,8 @@ export class SimpleChunker implements Chunker {
         text: section.text,
         version: page.version,
         updatedAt: page.updatedAt,
-        labels: page.labels
+        labels: page.labels,
+        url: page.url
       }];
     }
 
@@ -120,7 +121,8 @@ export class SimpleChunker implements Chunker {
         text: chunkText,
         version: page.version,
         updatedAt: page.updatedAt,
-        labels: page.labels
+        labels: page.labels,
+        url: page.url
       });
 
       // Prevent infinite loop

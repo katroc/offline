@@ -1,4 +1,5 @@
 import type { DocumentSource, DocumentSourceClient, SearchParams, SearchResponse } from './interfaces.js';
+import * as https from 'https';
 
 export interface ConfluenceConfig {
   baseUrl: string;
@@ -54,6 +55,11 @@ export class ConfluenceClient implements DocumentSourceClient {
   }
 
   async searchDocuments(params: SearchParams): Promise<SearchResponse> {
+    // Temporary: Use mock data when network is restricted
+    if (process.env.USE_MOCK_DATA === 'true') {
+      return this.getMockSearchResults(params);
+    }
+
     const cql = this.buildCQL(params);
     const { limit = 25, start = 0 } = params;
 
@@ -161,16 +167,14 @@ export class ConfluenceClient implements DocumentSourceClient {
   }
 
   private async fetch(url: string, init?: RequestInit): Promise<Response> {
-    const controller = new AbortController();
-    const timeoutMs = this.config.timeoutMs ?? 30000; // Increased timeout for public APIs
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    // Use native Node.js HTTPS module instead of fetch() due to environment restrictions
+    return new Promise<Response>((resolve, reject) => {
+      const urlObj = new URL(url);
+      const timeoutMs = this.config.timeoutMs ?? 30000;
 
-    try {
       const headers: Record<string, string> = {
+        'Host': urlObj.hostname,
         'Accept': 'application/json',
-        // Avoid sending Content-Type on GET to prevent 415 errors on some servers
-        ...(init && (init as any).method && (init as any).method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
-        // Set a UA to appease stricter proxies/filters
         'User-Agent': 'offline-mcp-server/0.1'
       };
 
@@ -186,36 +190,61 @@ export class ConfluenceClient implements DocumentSourceClient {
         headers['Authorization'] = `Basic ${auth}`;
       }
 
-      // Optional corporate proxy support via HTTPS_PROXY/HTTP_PROXY
-      let dispatcher: any = undefined;
-      const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
-      if (proxy) {
-        try {
-          const undici = await import('undici');
-          const ProxyAgent = (undici as any).ProxyAgent;
-          dispatcher = new ProxyAgent(proxy);
-        } catch {
-          // ignore if undici import fails; proceed without proxy
-        }
-      }
-
-      const response = await fetch(url, {
-        ...init,
-        signal: controller.signal,
+      const options = {
+        hostname: urlObj.hostname,
+        port: urlObj.port || 443,
+        path: urlObj.pathname + urlObj.search,
+        method: init?.method || 'GET',
         headers,
-        // @ts-ignore: dispatcher is undici-specific
-        dispatcher
+        timeout: timeoutMs,
+        rejectUnauthorized: true // Keep TLS validation
+      };
+
+      const req = https.request(options, (res: any) => {
+        let data = '';
+        res.on('data', (chunk: Buffer) => data += chunk.toString());
+        res.on('end', () => {
+          // Create a fetch-like Response object
+          const response = {
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            statusText: res.statusMessage,
+            headers: res.headers,
+            json: async () => JSON.parse(data),
+            text: async () => data
+          } as Response;
+
+          if (!response.ok) {
+            reject(new Error(`Confluence API ${res.statusCode}: ${data}`));
+          } else {
+            resolve(response);
+          }
+        });
       });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new Error(`Confluence API ${response.status}: ${errorText}`);
+      req.on('error', (err: Error) => {
+        console.error('HTTPS request error details:', {
+          message: err.message,
+          code: (err as any).code,
+          errno: (err as any).errno,
+          syscall: (err as any).syscall,
+          stack: err.stack
+        });
+        reject(new Error(`Network error: ${err.message}`));
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+
+      // Send request body if provided
+      if (init?.body) {
+        req.write(init.body);
       }
 
-      return response;
-    } finally {
-      clearTimeout(timeout);
-    }
+      req.end();
+    });
   }
   
   private async searchViaContentSearch(cql: string, limit: number, start: number): Promise<SearchResponse> {
@@ -284,5 +313,109 @@ export class ConfluenceClient implements DocumentSourceClient {
     if (base.endsWith('/') && path.startsWith('/')) return base.slice(0, -1) + path;
     if (!base.endsWith('/') && !path.startsWith('/')) return `${base}/${path}`;
     return base + path;
+  }
+
+  private getMockSearchResults(params: SearchParams): SearchResponse {
+    // Mock data based on actual Kafka Authorization CLI content
+    const mockDocs: DocumentSource[] = [
+      {
+        id: '61323986',
+        title: 'Kafka Authorization Command Line Interface',
+        spaceKey: 'KAFKA',
+        version: 5,
+        labels: ['kafka-cli', 'kafka-acls'],
+        updatedAt: '2015-11-10T21:59:14.000Z',
+        url: 'https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Authorization+Command+Line+Interface',
+        content: `# Kafka Authorization Command Line Interface
+
+## Introduction
+Kafka ships with a pluggable Authorizer and an out-of-box authorizer implementation that uses zookeeper to store all the acls. Kafka acls are defined in the general format of "Principal P is [Allowed/Denied] Operation O From Host H On Resource R". 
+
+## Command Line interface
+Kafka Authorization management CLI can be found under bin directory with all the other CLIs. The CLI script is called kafka-acls.sh.
+
+### Adding Acls
+To add an acl "Principals User:Bob and User:Alice are allowed to perform Operation Read and Write on Topic Test-Topic from Host1 and Host2":
+
+\`\`\`bash
+bin/kafka-acls.sh --authorizer kafka.security.auth.SimpleAclAuthorizer --authorizer-properties zookeeper.connect=localhost:2181 --add --allow-principal User:Bob --allow-principal User:Alice --allow-hosts Host1,Host2 --operations Read,Write --topic Test-topic
+\`\`\`
+
+### Removing Acls
+\`\`\`bash
+bin/kafka-acls.sh --authorizer kafka.security.auth.SimpleAclAuthorizer --authorizer-properties zookeeper.connect=localhost:2181 --remove --allow-principal User:Bob --allow-principal User:Alice --allow-hosts Host1,Host2 --operations Read,Write --topic Test-topic
+\`\`\`
+
+### List Acls
+\`\`\`bash
+bin/kafka-acls.sh --authorizer kafka.security.auth.SimpleAclAuthorizer --authorizer-properties zookeeper.connect=localhost:2181 --list --topic Test-topic
+\`\`\``
+      },
+      {
+        id: '51807580',
+        title: 'KIP-11 - Authorization Interface',
+        spaceKey: 'KAFKA',
+        version: 128,
+        labels: ['kip-11', 'authorization'],
+        updatedAt: '2015-10-27T00:49:06.000Z',
+        url: 'https://cwiki.apache.org/confluence/display/KAFKA/KIP-11+-+Authorization+Interface',
+        content: `# KIP-11 - Authorization Interface
+
+## Motivation
+As more enterprises have started using Kafka, there is increasing demand for authorization for who can publish or consume from topics. Authorization can be based on different available session attributes like user, IP, common name in certificate, etc.
+
+## Public Interfaces
+The APIs will now do authorizations so clients will see a new exception if they are not authorized for an operation.
+
+### Operations and Resources
+- READ: Topic, ConsumerGroup
+- WRITE: Topic  
+- CREATE: Cluster
+- DELETE: Topics
+- ALTER: Topics
+- DESCRIBE: Topic, Cluster
+- CLUSTER_ACTION: Cluster
+
+## Default Implementation: SimpleAclAuthorizer
+- Uses zookeeper as storage layer for ACLs
+- Deny takes precedence over Allow
+- When no ACL is attached to a resource, denies all requests
+- Allows principals with READ or WRITE permission the DESCRIBE operation as well`
+      }
+    ];
+
+    // Filter based on query if provided
+    if (params.query) {
+      const queryLower = params.query.toLowerCase();
+      console.log('Mock search: Filtering for query:', queryLower);
+      
+      // Split query into keywords and check if any match
+      const keywords = queryLower.split(/\s+/);
+      const filtered = mockDocs.filter(doc => {
+        const titleLower = doc.title.toLowerCase();
+        const contentLower = doc.content.toLowerCase();
+        const combined = titleLower + ' ' + contentLower;
+        
+        // Check if any keyword matches
+        const matches = keywords.some(keyword => combined.includes(keyword));
+        console.log(`Mock search: Document "${doc.title}" matches:`, matches);
+        return matches;
+      });
+      
+      console.log('Mock search: Found', filtered.length, 'matching documents');
+      return {
+        documents: filtered.slice(0, params.limit || 25),
+        start: 0,
+        limit: params.limit || 25,
+        total: filtered.length
+      };
+    }
+
+    return {
+      documents: mockDocs.slice(0, params.limit || 25),
+      start: 0,
+      limit: params.limit || 25,
+      total: mockDocs.length
+    };
   }
 }

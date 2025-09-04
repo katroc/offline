@@ -1,4 +1,5 @@
 import type { RagResponse, Filters } from '@app/shared';
+import type { DocumentSource } from './sources/interfaces.js';
 import type { ValidRagQuery } from './validation.js';
 import { chatCompletion, type ChatMessage } from './llm/chat.js';
 import { ConfluenceClient } from './sources/confluence.js';
@@ -87,7 +88,13 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
 
     const system: ChatMessage = {
       role: 'system',
-      content: 'You are a helpful assistant that answers questions based only on the provided context. This is mock data since Confluence is not configured. Always cite your sources using the reference numbers provided.'
+      content: [
+        'You are a factual, concise assistant.',
+        'Answer ONLY using the provided context. If insufficient, say you do not know.',
+        'Citations: Use bracketed numbers like [1], [2] that refer to the sources list order from the context.',
+        'Place citations immediately after the sentence they support.',
+        'Do not invent facts or sources.'
+      ].join(' ')
     };
 
     const user: ChatMessage = {
@@ -130,7 +137,13 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
 
     const system: ChatMessage = {
       role: 'system',
-      content: 'You are a helpful assistant that answers questions based only on the provided context. If the context does not contain enough information to answer the question, say so. Always cite your sources using the reference numbers provided.'
+      content: [
+        'You are a factual, concise assistant.',
+        'Answer ONLY using the provided context. If insufficient, say you do not know.',
+        'Citations: Use bracketed numbers like [1], [2] that refer to the sources list order from the context.',
+        'Place citations immediately after the sentence they support.',
+        'Do not invent facts or sources.'
+      ].join(' ')
     };
 
     const user: ChatMessage = {
@@ -183,4 +196,41 @@ export async function syncConfluence(opts?: { spaces?: string[]; updatedAfter?: 
 
   console.log(`Sync completed. Total documents: ${total}`);
   return { total, bySpace };
+}
+
+// Ingest pre-fetched documents (e.g., pasted from Confluence API) into local store
+export async function ingestDocuments(docs: DocumentSource[]): Promise<{ total: number }>{
+  if (!docs || !Array.isArray(docs)) {
+    throw new Error('Invalid documents payload');
+  }
+  if (!localDocStore) localDocStore = new LocalDocStore();
+  localDocStore.upsertAll(docs);
+  return { total: docs.length };
+}
+
+// Helper to convert a subset of Confluence API page objects to DocumentSource
+export function mapConfluenceApiPagesToDocuments(pages: any[]): DocumentSource[] {
+  const results: DocumentSource[] = [];
+  for (const apiPage of pages || []) {
+    try {
+      const doc: DocumentSource = {
+        id: String(apiPage.id),
+        title: String(apiPage.title || ''),
+        spaceKey: String(apiPage?.space?.key || apiPage?.spaceKey || ''),
+        version: Number(apiPage?.version?.number || apiPage?.version || 1),
+        labels: Array.isArray(apiPage?.metadata?.labels?.results)
+          ? apiPage.metadata.labels.results.map((l: any) => String(l.name)).filter(Boolean)
+          : Array.isArray(apiPage?.labels) ? apiPage.labels.map((l: any) => String(l)).filter(Boolean) : [],
+        updatedAt: String(apiPage?.version?.when || apiPage?.updatedAt || new Date().toISOString()),
+        url: apiPage?._links?.base
+          ? `${apiPage._links.base}${apiPage._links.webui}`
+          : (apiPage?._links?.webui || apiPage?.url || undefined),
+        content: String(apiPage?.body?.storage?.value || apiPage?.content || '')
+      };
+      results.push(doc);
+    } catch {
+      // skip malformed entries
+    }
+  }
+  return results;
 }

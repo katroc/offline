@@ -95,6 +95,29 @@ ${docSummaries}`
 /**
  * Simple keyword-based relevance scoring as fallback
  */
+export function simpleTextRelevanceScore(query: string, text: string, title?: string): number {
+  const queryLower = query.toLowerCase();
+  const titleLower = (title || '').toLowerCase();
+  const contentLower = text.toLowerCase();
+  
+  let score = 0;
+  
+  // Title matches are worth more
+  if (titleLower && titleLower.includes(queryLower)) score += 0.5;
+  
+  // Count keyword occurrences in content
+  const queryWords = queryLower.split(/\s+/);
+  for (const word of queryWords) {
+    if (word.length > 2) { // Skip very short words
+      const titleMatches = titleLower ? (titleLower.match(new RegExp(word, 'g')) || []).length : 0;
+      const contentMatches = (contentLower.match(new RegExp(word, 'g')) || []).length;
+      score += titleMatches * 0.1 + contentMatches * 0.02;
+    }
+  }
+  
+  return Math.min(score, 1.0); // Cap at 1.0
+}
+
 function calculateKeywordScore(query: string, doc: DocumentSource): number {
   const queryLower = query.toLowerCase();
   const titleLower = doc.title.toLowerCase();
