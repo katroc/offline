@@ -1,1 +1,1 @@
-{ "mcpServers": { "bugger": { "command": "npx", "args": [ "-y", "bugger-mcp@latest" ] } } }
+{ "mcpServers": { "bugger": { "command": "npx", "args": [ "-y", "bugger-mcp@latest" ] } } }im

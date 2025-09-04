@@ -2,7 +2,7 @@ import './env.js';
 import Fastify from 'fastify';
 import { generateRequestId, logRequestStart, logRequestEnd, logError } from './logger.js';
 import { validateRagQuery } from './validation.js';
-import { ragQuery } from './orchestrator.js';
+import { ragQuery, syncConfluence } from './orchestrator.js';
 
 const port = Number(process.env.MCP_PORT || 8787);
 const host = String(process.env.MCP_HOST || '127.0.0.1');
@@ -44,6 +44,24 @@ app.post('/rag/query', async (req, reply) => {
     const reqId = (req as any).reqId as string | undefined;
     logError({ reqId, method: req.method, url: req.url, err });
     return reply.code(400).send({ error: 'invalid JSON body' });
+  }
+});
+
+// Admin: trigger Confluence sync (no CQL; paginates content)
+app.post('/admin/sync', async (req, reply) => {
+  try {
+    const body = (req.body as any) || {};
+    const spaces: string[] | undefined = Array.isArray(body.spaces) ? body.spaces : undefined;
+    const updatedAfter: string | undefined = typeof body.updatedAfter === 'string' ? body.updatedAfter : undefined;
+    const maxPages: number | undefined = typeof body.maxPages === 'number' ? body.maxPages : undefined;
+    const pageSize: number | undefined = typeof body.pageSize === 'number' ? body.pageSize : undefined;
+
+    const result = await syncConfluence({ spaces, updatedAfter, maxPages, pageSize });
+    return reply.send({ ok: true, ...result });
+  } catch (err) {
+    const reqId = (req as any).reqId as string | undefined;
+    logError({ reqId, method: req.method, url: req.url, err });
+    return reply.code(400).send({ ok: false, error: err instanceof Error ? err.message : 'sync failed' });
   }
 });
 

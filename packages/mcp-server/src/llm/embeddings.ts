@@ -6,9 +6,12 @@ export interface EmbedOptions {
 
 export async function embed(texts: string[], opts: EmbedOptions = {}): Promise<number[][]> {
   if (!Array.isArray(texts) || texts.length === 0) return [];
+  
   const baseUrl = opts.baseUrl || process.env.LLM_BASE_URL || 'http://127.0.0.1:1234';
   const model = opts.model || process.env.LLM_EMBED_MODEL || 'gemma-3';
   const timeoutMs = opts.timeoutMs ?? Number(process.env.REQUEST_TIMEOUT_MS || 15000);
+  
+  console.log(`Attempting embeddings with model: ${model}`);
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
