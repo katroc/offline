@@ -575,7 +575,7 @@ body {
 
 /* Empty state styling */
 .conversation:empty::before {
-  content: "Hello! I'm Offliner, your documentation assistant. How can I help you today?";
+  content: "Hello! I'm Cabin, your documentation assistant. How can I help you today?";
   display: flex;
   align-items: center;
   justify-content: center;

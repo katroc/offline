@@ -186,7 +186,7 @@ function App() {
         <header className="workspace-header">
           <div className="header-content">
             <div className="header-title">
-              <h1>Offliner</h1>
+              <h1>Cabin</h1>
               <div className="model-info">
                 <span className="model-badge">Documentation Assistant</span>
               </div>
