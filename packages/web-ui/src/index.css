@@ -503,9 +503,14 @@ body {
 }
 
 .loading-details { display: flex; flex-direction: column; gap: 10px; }
-.loading-title { color: var(--text-secondary); font-weight: 500; }
+.loading-title { color: var(--text-secondary); font-weight: 500; display: inline-flex; align-items: baseline; gap: 4px; }
+.loading-title .dots { display: inline-block; width: 0ch; overflow: hidden; animation: ellipsis 1.2s steps(4,end) infinite; }
+.loading-title .dots::after { content: '...'; }
 .loading-steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .loading-step { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 14px; }
+.loading-step.active .step-label { color: var(--text-secondary); }
+.loading-step.done { color: var(--text-secondary); }
+.loading-step.done .step-icon { color: var(--success); }
 .loading-step .step-icon { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
 .loading-step .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-light); display: inline-block; }
 .loading-step .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-light); border-top-color: var(--accent); display: inline-block; animation: spin 0.9s linear infinite; }
@@ -516,6 +521,8 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+@keyframes ellipsis { to { width: 3ch; } }
 
 /* Empty state styling */
 .conversation:empty::before {

@@ -33,7 +33,10 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, 
 
   return (
     <div className="loading-details" aria-live="polite">
-      <div className="loading-title">Searching documentation and generating response…</div>
+      <div className="loading-title">
+        <span>Searching documentation and generating response</span>
+        <span className="dots" aria-hidden></span>
+      </div>
       <ul className="loading-steps">
         {phases.map((label, i) => {
           const state = i < step ? 'done' : i === step ? 'active' : 'pending';
@@ -66,4 +69,3 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, 
 };
 
 export default LoadingProgress;
-
