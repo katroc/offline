@@ -237,6 +237,13 @@ body {
   align-items: stretch;
 }
 
+/* Light theme: flatten conversation container, remove inset look */
+:root[data-theme="light"] .conversation {
+  background: var(--bg-secondary);
+  border-color: var(--border-light);
+  box-shadow: 0 8px 24px rgba(0,0,0,.06);
+}
+
 .message {
   display: flex;
   flex-direction: column;
