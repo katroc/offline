@@ -170,7 +170,7 @@ body {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px; /* tighter spacing */
 }
 
 .model-selector {
@@ -218,6 +218,8 @@ body {
   border-radius: var(--radius-lg);
   padding: 16px;
   box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  max-width: 720px;
+  margin: 0 auto; /* center within conversation */
 }
 .welcome-header {
   color: var(--text-secondary);
@@ -482,7 +484,7 @@ body {
   /* Fallback for browsers without color-mix support */
   background: var(--bg-secondary);
   background: color-mix(in oklab, var(--bg-secondary) 70%, transparent);
-  align-items: flex-end;
+  align-items: center; /* align input and button */
   position: sticky;
   bottom: 0;
   backdrop-filter: var(--blur-bg);
@@ -522,7 +524,7 @@ body {
 }
 
 .send-button {
-  padding: 12px 18px;
+  padding: 14px 18px; /* height closer to input */
   background: var(--accent);
   color: white;
   border: none;
