@@ -375,6 +375,18 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
                       <span className="link-icon"><Icon name="external-link" size={14} /></span>
                     </a>
                   ),
+                  
+                  // Enhanced table rendering
+                  table: ({ children }) => (
+                    <div className="table-wrapper">
+                      <table className="response-table">{children}</table>
+                    </div>
+                  ),
+                  thead: ({ children }) => <thead className="table-head">{children}</thead>,
+                  tbody: ({ children }) => <tbody className="table-body">{children}</tbody>,
+                  tr: ({ children }) => <tr className="table-row">{children}</tr>,
+                  th: ({ children }) => <th className="table-header">{processChildrenWithCitations(children)}</th>,
+                  td: ({ children }) => <td className="table-cell">{processChildrenWithCitations(children)}</td>,
                 }}
               >
                 {section.content}

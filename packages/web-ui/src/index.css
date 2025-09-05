@@ -524,6 +524,72 @@ body {
   color: var(--text-secondary);
 }
 
+/* Table styling for AI responses */
+.table-wrapper {
+  margin: var(--space-4) 0;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  background: var(--bg-secondary);
+}
+
+.response-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-secondary);
+  min-width: 100%;
+}
+
+.table-header,
+.table-cell {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  vertical-align: top;
+}
+
+.table-header {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+}
+
+.table-cell {
+  color: var(--text-primary);
+}
+
+.table-row:last-child .table-cell {
+  border-bottom: none;
+}
+
+.table-body .table-row:nth-child(even) .table-cell {
+  background: color-mix(in oklab, var(--bg-tertiary) 30%, transparent);
+}
+
+.table-body .table-row:hover .table-cell {
+  background: var(--bg-hover);
+  transition: background-color 0.2s ease;
+}
+
+@media (max-width: 768px) {
+  .table-header,
+  .table-cell {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+  }
+  
+  .table-wrapper {
+    font-size: var(--text-xs);
+  }
+}
+
 .message-citations {
   font-size: var(--text-sm);
   color: var(--text-secondary);
