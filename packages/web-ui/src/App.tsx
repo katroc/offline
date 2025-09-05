@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { RagQuery } from '@app/shared';
 import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
+import { ExamplesPanel } from './components/ExamplesPanel';
 
 interface Message {
   id: string;
@@ -224,17 +225,10 @@ function App() {
                   </svg>
                 )}
               </button>
-              <button className="header-button" title="New conversation" onClick={clearConversation}>
+              <button className="header-button" title="New conversation" onClick={clearConversation} aria-label="Start new conversation" disabled={messages.length === 0}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                   <polyline points="9,22 9,12 15,12 15,22"/>
-                </svg>
-              </button>
-              <button className="header-button" title="Settings">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M12 1v6m0 6v6"/>
-                  <path d="m21 12-6 0m-6 0-6 0"/>
                 </svg>
               </button>
             </div>
@@ -260,7 +254,9 @@ function App() {
         </header>
 
         <div className="conversation">
-          {/* Empty state intentionally minimal in enterprise layout */}
+          {messages.length === 0 && !isLoading && (
+            <ExamplesPanel onPick={(t) => { setInput(t); }} />
+          )}
           
           {messages.map((message, index) => (
             <div key={message.id} className={`message message-${message.type}`}>
