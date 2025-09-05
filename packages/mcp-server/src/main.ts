@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import { generateRequestId, logRequestStart, logRequestEnd, logError } from './logger.js';
 import { validateRagQuery } from './validation.js';
 import { ragQuery, syncConfluence, ingestDocuments, mapConfluenceApiPagesToDocuments } from './orchestrator.js';
+import { chatCompletion } from './llm/chat.js';
 
 const port = Number(process.env.MCP_PORT || 8787);
 const host = String(process.env.MCP_HOST || '127.0.0.1');
@@ -61,6 +62,26 @@ app.post('/rag/query', async (req, reply) => {
     const reqId = (req as any).reqId as string | undefined;
     logError({ reqId, method: req.method, url: req.url, err });
     return reply.code(400).send({ error: 'invalid JSON body' });
+  }
+});
+
+// General chat (no RAG) for ad-hoc questions
+app.post('/chat', async (req, reply) => {
+  try {
+    const body = (req.body as any) || {};
+    const question: string = typeof body.question === 'string' ? body.question : '';
+    const model: string | undefined = typeof body.model === 'string' ? body.model : undefined;
+    if (!question) return reply.code(400).send({ error: 'question is required' });
+    const system = 'You are a concise, helpful assistant. Answer accurately and clearly.';
+    const answer = await chatCompletion([
+      { role: 'system', content: system },
+      { role: 'user', content: question },
+    ], { model });
+    return reply.send({ answer, citations: [] });
+  } catch (err) {
+    const reqId = (req as any).reqId as string | undefined;
+    logError({ reqId, method: req.method, url: req.url, err });
+    return reply.code(502).send({ error: err instanceof Error ? err.message : 'chat failed' });
   }
 });
 
