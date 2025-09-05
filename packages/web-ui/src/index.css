@@ -833,12 +833,21 @@ body {
 .citation-ref {
   transition: all 0.2s ease;
   cursor: pointer;
+  outline: none;
 }
 
 .citation-ref:hover {
   background: var(--accent-hover);
   transform: translateY(-1px);
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+
+.citation-ref:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 30%, transparent), 0 2px 4px rgba(0,0,0,.15);
+}
+
+.citation-ref.active {
+  background: var(--accent-hover);
 }
 
 /* Citations */
@@ -883,6 +892,11 @@ body {
 .citation-item:hover {
   background: var(--bg-hover);
   box-shadow: var(--shadow-sm);
+}
+
+.citation-item.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 15%, transparent), var(--shadow-sm);
 }
 
 /* Tighter alignment for source list numbers (no extra side margins,

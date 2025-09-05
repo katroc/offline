@@ -27,6 +27,26 @@ interface ResponseSection {
 }
 
 export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations, query }) => {
+  const [activeCitation, setActiveCitation] = React.useState<number | null>(null);
+  const hoverTimeoutRef = React.useRef<number | null>(null);
+  const citationRefs = React.useRef<Record<number, HTMLDivElement | null>>({});
+
+  const clearHoverTimeout = () => {
+    if (hoverTimeoutRef.current) {
+      window.clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  };
+
+  const focusCitation = (num: number) => {
+    const el = citationRefs.current[num];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      setActiveCitation(num);
+      clearHoverTimeout();
+      hoverTimeoutRef.current = window.setTimeout(() => setActiveCitation(null), 1600);
+    }
+  };
   
   // Extract referenced citation numbers from the answer text
   const getReferencedCitations = (text: string, allCitations: Citation[]): Citation[] => {
@@ -65,7 +85,30 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
             const num = parseInt(match[1], 10);
             // Only render a pill if this number exists in the citations list
             if (num > 0 && num <= citations.length) {
-              return <span key={idx} className="citation-ref">{match[1]}</span>;
+              const title = citations[num - 1]?.title || `Source ${num}`;
+              const onKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  focusCitation(num);
+                }
+              };
+              return (
+                <span
+                  key={idx}
+                  className={`citation-ref${activeCitation === num ? ' active' : ''}`}
+                  data-cite={num}
+                  title={title}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View source ${num}: ${title}`}
+                  onClick={() => focusCitation(num)}
+                  onKeyDown={onKeyDown}
+                  onMouseEnter={() => setActiveCitation(num)}
+                  onMouseLeave={() => setActiveCitation(null)}
+                >
+                  {match[1]}
+                </span>
+              );
             }
             // If invalid (e.g., [2] but only 1 source), drop it to avoid confusion
             return null;
@@ -330,7 +373,12 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
                 : (citations.findIndex(c => c.pageId === citation.pageId && c.url === citation.url) + 1);
               
               return (
-                <div key={`${citation.pageId}-${index}`} className="citation-item">
+                <div
+                  key={`${citation.pageId}-${index}`}
+                  className={`citation-item${activeCitation === displayNumber ? ' active' : ''}`}
+                  ref={(el) => { citationRefs.current[displayNumber] = el; }}
+                  id={`source-${displayNumber}`}
+                >
                   <span className="citation-number">{displayNumber}</span>
                   <a 
                     href={citation.url} 
