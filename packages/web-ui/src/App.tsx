@@ -179,7 +179,7 @@ function App() {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: result.answer,
+        content: result.answer && result.answer.trim().length > 0 ? result.answer : 'No response received from the model.',
         citations: result.citations
       };
 

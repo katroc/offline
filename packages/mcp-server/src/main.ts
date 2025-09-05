@@ -73,11 +73,17 @@ app.post('/chat', async (req, reply) => {
     const model: string | undefined = typeof body.model === 'string' ? body.model : undefined;
     if (!question) return reply.code(400).send({ error: 'question is required' });
     const system = 'You are a concise, helpful assistant. Answer accurately and clearly.';
+    const start = Date.now();
     const answer = await chatCompletion([
       { role: 'system', content: system },
       { role: 'user', content: question },
     ], { model });
-    return reply.send({ answer, citations: [] });
+    const duration = Date.now() - start;
+    // If the model returned an empty string (rare), provide a clear message
+    const safeAnswer = (typeof answer === 'string' && answer.trim().length > 0)
+      ? answer
+      : 'The model returned no content. Please verify LLM_BASE_URL and that a chat model is running.';
+    return reply.send({ answer: safeAnswer, citations: [], meta: { durationMs: duration } });
   } catch (err) {
     const reqId = (req as any).reqId as string | undefined;
     logError({ reqId, method: req.method, url: req.url, err });
