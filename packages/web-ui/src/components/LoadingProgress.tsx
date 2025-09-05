@@ -5,7 +5,6 @@ interface LoadingProgressProps {
   query: string;
   space?: string;
   labels?: string[];
-  mode?: 'rag' | 'chat';
 }
 
 const basePhases = [
@@ -16,15 +15,13 @@ const basePhases = [
   'Drafting answer',
 ];
 
-export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, labels, mode = 'rag' }) => {
+export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, labels }) => {
   const [step, setStep] = useState(0);
 
   const phases = useMemo(() => {
-    if (mode === 'chat') {
-      return ['Starting session', 'Drafting answer'];
-    }
-    return [...basePhases];
-  }, [mode]);
+    const arr = [...basePhases];
+    return arr;
+  }, []);
 
   useEffect(() => {
     setStep(0);
@@ -37,7 +34,7 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, 
   return (
     <div className="loading-details" aria-live="polite">
       <div className="loading-title">
-        <span>{mode === 'chat' ? 'Generating response' : 'Searching documentation and generating response'}</span>
+        <span>Searching documentation and generating response</span>
         <span className="dots" aria-hidden>
           <span>.</span>
           <span>.</span>
@@ -63,7 +60,7 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, 
           );
         })}
       </ul>
-      {mode === 'rag' && (space || (labels && labels.length > 0)) && (
+      {(space || (labels && labels.length > 0)) && (
         <div className="loading-context">
           {space && <span className="ctx-item">Space: {space}</span>}
           {labels && labels.length > 0 && (

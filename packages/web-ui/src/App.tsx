@@ -49,11 +49,6 @@ function App() {
   });
   const [selectedModel, setSelectedModel] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.model) || '' : ''));
   const [availableModels, setAvailableModels] = useState<Array<{id: string, object: string}>>([]);
-  const [useRag, setUseRag] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    const saved = localStorage.getItem('chat:useRag:v1');
-    return saved === null ? true : saved === 'true';
-  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -68,10 +63,7 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem('chat:useRag:v1', String(useRag));
-  }, [useRag]);
+  
 
   // Persist state to localStorage
   useEffect(() => {
@@ -142,28 +134,21 @@ function App() {
     setIsLoading(true);
 
     try {
-      let response: Response;
-      if (useRag) {
-        const query: RagQuery = {
-          question: input.trim(),
-          space: space || undefined,
-          labels: labels ? labels.split(',').map(l => l.trim()) : undefined,
-          topK: 5,
-          model: selectedModel || undefined
-        };
+      const query: RagQuery = {
+        question: input.trim(),
+        space: space || undefined,
+        labels: labels ? labels.split(',').map(l => l.trim()) : undefined,
+        topK: 5,
+        model: selectedModel || undefined
+      };
 
-        response = await fetch('/rag/query', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(query),
-        });
-      } else {
-        response = await fetch('/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: input.trim(), model: selectedModel || undefined })
-        });
-      }
+      const response = await fetch('/rag/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(query),
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -179,7 +164,7 @@ function App() {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: result.answer && result.answer.trim().length > 0 ? result.answer : 'No response received from the model.',
+        content: result.answer,
         citations: result.citations
       };
 
@@ -294,7 +279,6 @@ function App() {
                   query={input.trim()}
                   space={space || undefined}
                   labels={labels ? labels.split(',').map(l => l.trim()).filter(Boolean) : []}
-                  mode={useRag ? 'rag' : 'chat'}
                 />
               </div>
             </div>
@@ -312,11 +296,6 @@ function App() {
             className="input-field"
             disabled={isLoading}
           />
-          <label className="rag-toggle" title={useRag ? 'RAG On: answer from your docs' : 'RAG Off: general LLM'}>
-            <input type="checkbox" checked={useRag} onChange={(e) => setUseRag(e.target.checked)} />
-            <span className="switch" />
-            <span className="rag-label">RAG</span>
-          </label>
           <button 
             type="submit" 
             className="send-button"
