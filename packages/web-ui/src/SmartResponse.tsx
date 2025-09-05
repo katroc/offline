@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
+import { Icon } from './components/Icon';
 
 interface Citation {
   pageId: string;
@@ -47,9 +48,82 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
       .filter(Boolean);
   };
 
-  // Pre-process content to add custom markers for citation references
-  const preprocessContentForCitations = (content: string): string => {
-    return content.replace(/\[(\d+)\]/g, '**[CITE:$1]**');
+  // Wrap bracketed numeric references like [1] with a citation pill span
+  const wrapCitationRefs = (node: any): any => {
+    if (typeof node === 'string') {
+      // Normalize duplicates like [1][1] or [1] 1 -> [1]
+      const normalized = node
+        .replace(/\[(\d+)\]\s*\[\1\]/g, '[$1]')
+        .replace(/\[(\d+)\](\s*\1)(?!\d)/g, '[$1]');
+
+      // Only consider bracketed numbers that aren't immediately followed by another digit
+      if (/(?<!\w)\[(\d+)\](?!\d)/.test(normalized)) {
+        const parts = normalized.split(/((?<!\w)\[(\d+)\](?!\d))/);
+        return parts.map((part, idx) => {
+          const match = part.match(/^\[(\d+)\]$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            // Only render a pill if this number exists in the citations list
+            if (num > 0 && num <= citations.length) {
+              return <span key={idx} className="citation-ref">{match[1]}</span>;
+            }
+            // If invalid (e.g., [2] but only 1 source), drop it to avoid confusion
+            return null;
+          }
+          return part;
+        });
+      }
+      return normalized;
+    }
+    if (React.isValidElement(node) && node.props && node.props.children) {
+      return React.cloneElement(node, {
+        children: React.Children.map(node.props.children, wrapCitationRefs)
+      });
+    }
+    return node;
+  };
+
+  // Post-process sibling nodes: remove a leading duplicate number that
+  // immediately follows a citation pill (handles cross-node duplicates).
+  const dedupeAdjacentCitationDigits = (nodes: any[]): any[] => {
+    const out: any[] = [];
+    let lastCite: number | null = null;
+    for (const n of nodes) {
+      if (React.isValidElement(n) && n.props?.className === 'citation-ref') {
+        const t = Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '');
+        const num = parseInt(t, 10);
+        if (!Number.isNaN(num)) {
+          lastCite = num;
+        } else {
+          lastCite = null;
+        }
+        out.push(n);
+        continue;
+      }
+      if (typeof n === 'string' && lastCite !== null) {
+        // Strip a leading duplicate like " 1" or "\u00A01" optionally before punctuation
+        const re = new RegExp(`^\\s*${lastCite}(?=[^\\d])`);
+        const replaced = n.replace(re, '');
+        out.push(replaced);
+        // Only dedupe once for the immediate sibling
+        lastCite = null;
+        continue;
+      }
+      // Reset if we encounter any other node
+      lastCite = null;
+      out.push(n);
+    }
+    return out;
+  };
+
+  // Utility to map children -> wrap citation refs -> dedupe adjacent digits
+  const processChildrenWithCitations = (children: any): any => {
+    const arr = React.Children.toArray(children).map((n: any) => wrapCitationRefs(n));
+    const flat: any[] = [];
+    for (const n of arr) {
+      if (Array.isArray(n)) flat.push(...n); else flat.push(n);
+    }
+    return dedupeAdjacentCitationDigits(flat);
   };
 
   // Detect query type based on patterns
@@ -117,14 +191,14 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
   };
 
   // Get icon for section type
-  const getSectionIcon = (type: string): string => {
+  const getSectionIcon = (type: string): React.ReactNode => {
     switch (type) {
-      case 'problem': return '⚠️';
-      case 'solution': return '✅';
-      case 'warning': return '⚡';
-      case 'tip': return '💡';
-      case 'step': return '👉';
-      default: return '';
+      case 'problem': return <Icon name="alert" size={16} />;
+      case 'solution': return <Icon name="check-circle" size={16} />;
+      case 'warning': return <Icon name="bolt" size={16} />;
+      case 'tip': return <Icon name="bulb" size={16} />;
+      case 'step': return <Icon name="clipboard" size={16} />;
+      default: return null;
     }
   };
 
@@ -142,15 +216,24 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
   const queryType = detectQueryType(query);
   const sections = parseResponse(answer, queryType);
   const referencedCitations = getReferencedCitations(answer, citations);
+  const showAllCitations = referencedCitations.length === 0 && citations.length > 0;
 
   return (
     <div className={`smart-response ${getResponseClass(queryType)}`}>
       {/* Query type indicator */}
       <div className="response-type-indicator">
-        {queryType === 'howto' && <span className="type-badge">📋 How-to</span>}
-        {queryType === 'troubleshooting' && <span className="type-badge">🔧 Troubleshooting</span>}
-        {queryType === 'factual' && <span className="type-badge">💭 Information</span>}
-        {queryType === 'comparison' && <span className="type-badge">⚖️ Comparison</span>}
+        {queryType === 'howto' && (
+          <span className="type-badge"><Icon name="clipboard" size={14} /> <span>How-to</span></span>
+        )}
+        {queryType === 'troubleshooting' && (
+          <span className="type-badge"><Icon name="tools" size={14} /> <span>Troubleshooting</span></span>
+        )}
+        {queryType === 'factual' && (
+          <span className="type-badge"><Icon name="info" size={14} /> <span>Information</span></span>
+        )}
+        {queryType === 'comparison' && (
+          <span className="type-badge"><Icon name="scale" size={14} /> <span>Comparison</span></span>
+        )}
       </div>
 
       {/* Main content */}
@@ -188,137 +271,67 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
                           onClick={() => navigator.clipboard.writeText(String(children))}
                           title="Copy code"
                         >
-                          📋
+                          <Icon name="clipboard" />
                         </button>
                       </div>
                     );
                   },
                   
-                  // Style citation references in text - more comprehensive approach
-                  text: ({ children }) => {
-                    if (typeof children === 'string' && /\[\d+\]/.test(children)) {
-                      const parts = children.split(/(\[\d+\])/);
-                      return (
-                        <>
-                          {parts.map((part, index) => {
-                            if (/^\[\d+\]$/.test(part)) {
-                              return (
-                                <span key={index} className="citation-ref">
-                                  {part.slice(1, -1)}
-                                </span>
-                              );
-                            }
-                            return part;
-                          })}
-                        </>
-                      );
-                    }
-                    return children;
-                  },
-                  
-                  // Also apply to paragraph content
-                  p: ({ children }) => {
-                    // Process children to find and replace citation patterns
-                    const processChildren = (node: any): any => {
-                      if (typeof node === 'string') {
-                        if (/\[\d+\]/.test(node)) {
-                          const parts = node.split(/(\[\d+\])/);
-                          return parts.map((part, index) => {
-                            if (/^\[\d+\]$/.test(part)) {
-                              return (
-                                <span key={index} className="citation-ref">
-                                  {part.slice(1, -1)}
-                                </span>
-                              );
-                            }
-                            return part;
-                          });
-                        }
-                        return node;
-                      }
-                      if (React.isValidElement(node) && node.props.children) {
-                        return React.cloneElement(node, {
-                          children: React.Children.map(node.props.children, processChildren)
-                        });
-                      }
-                      return node;
-                    };
-                    
-                    const processedChildren = React.Children.map(children, processChildren);
-                    return <p>{processedChildren}</p>;
-                  },
+                  // Normalize citation references across common block/inline elements
+                  p: ({ children }) => <p>{processChildrenWithCitations(children)}</p>,
                   
                   // Enhanced list rendering
                   ol: ({ children }) => <ol className="ordered-list">{children}</ol>,
                   ul: ({ children }) => <ul className="unordered-list">{children}</ul>,
-                  li: ({ children }) => <li className="list-item">{children}</li>,
+                  li: ({ children }) => <li className="list-item">{processChildrenWithCitations(children)}</li>,
                   
                   // Enhanced headings
-                  h1: ({ children }) => <h1 className="response-h1">{children}</h1>,
-                  h2: ({ children }) => <h2 className="response-h2">{children}</h2>,
-                  h3: ({ children }) => <h3 className="response-h3">{children}</h3>,
+                  h1: ({ children }) => <h1 className="response-h1">{processChildrenWithCitations(children)}</h1>,
+                  h2: ({ children }) => <h2 className="response-h2">{processChildrenWithCitations(children)}</h2>,
+                  h3: ({ children }) => <h3 className="response-h3">{processChildrenWithCitations(children)}</h3>,
                   
                   // Enhanced emphasis
-                  // Enhanced emphasis with citation handling
-                  strong: ({ children }) => {
-                    if (typeof children === 'string' && children.includes('[CITE:')) {
-                      const parts = children.split(/(\[CITE:(\d+)\])/);
-                      return (
-                        <>
-                          {parts.map((part, index) => {
-                            const citeMatch = part.match(/^\[CITE:(\d+)\]$/);
-                            if (citeMatch) {
-                              return (
-                                <span key={index} className="citation-ref">
-                                  {citeMatch[1]}
-                                </span>
-                              );
-                            }
-                            return part ? <strong className="text-bold" key={index}>{part}</strong> : null;
-                          })}
-                        </>
-                      );
-                    }
-                    return <strong className="text-bold">{children}</strong>;
-                  },
+                  strong: ({ children }) => <strong className="text-bold">{React.Children.map(children, wrapCitationRefs)}</strong>,
                   em: ({ children }) => <em className="text-italic">{children}</em>,
                   
                   // Blockquotes as callouts
                   blockquote: ({ children }) => (
                     <div className="callout callout-info">
-                      <div className="callout-icon">ℹ️</div>
-                      <div className="callout-content">{children}</div>
+                      <div className="callout-icon"><Icon name="info" size={16} /></div>
+                      <div className="callout-content">{processChildrenWithCitations(children)}</div>
                     </div>
                   ),
                   
                   // Enhanced links
                   a: ({ href, children }) => (
                     <a href={href} className="response-link" target="_blank" rel="noopener noreferrer">
-                      {children} 🔗
+                      {children}
+                      <span className="link-icon"><Icon name="external-link" size={14} /></span>
                     </a>
                   ),
                 }}
               >
-                {preprocessContentForCitations(section.content)}
+                {section.content}
               </ReactMarkdown>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Citations section - only show referenced citations */}
-      {referencedCitations.length > 0 && (
+      {/* Citations section - show referenced citations, fallback to all if none referenced */}
+      {(referencedCitations.length > 0 || showAllCitations) && (
         <div className="citations-section">
-          <h3 className="citations-header">📚 Sources</h3>
+          <h3 className="citations-header"><Icon name="stack" size={16} /> <span>Sources</span></h3>
           <div className="citations-list">
-            {referencedCitations.map((citation, index) => {
-              // Find the original citation number from the full citations array
-              const originalIndex = citations.findIndex(c => c.pageId === citation.pageId && c.url === citation.url);
-              const citationNumber = originalIndex + 1;
+            {(showAllCitations ? citations : referencedCitations).map((citation, index) => {
+              // Determine display number based on context
+              const displayNumber = showAllCitations
+                ? index + 1
+                : (citations.findIndex(c => c.pageId === citation.pageId && c.url === citation.url) + 1);
               
               return (
                 <div key={`${citation.pageId}-${index}`} className="citation-item">
-                  <span className="citation-number">{citationNumber}</span>
+                  <span className="citation-number">{displayNumber}</span>
                   <a 
                     href={citation.url} 
                     target="_blank" 
