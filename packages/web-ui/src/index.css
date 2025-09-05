@@ -79,6 +79,9 @@
 
   /* Readability */
   --measure: 72ch; /* optimal line length */
+  
+  /* Layout dimensions */
+  --header-height: 85px; /* Total header height for consistent calculations */
 }
 
 /* Light theme: same token names for seamless switching */
@@ -155,7 +158,7 @@ body {
   max-width: min(1200px, 96vw);
   flex: 1;
   min-height: 0; /* Enable flex child scrolling */
-  height: calc(100vh - 90px); /* Take full available height */
+  height: calc(100vh - var(--header-height)); /* Take full available height */
 }
 
 .history-pane {
@@ -163,23 +166,26 @@ body {
   flex-shrink: 0;
   background: var(--bg-secondary);
   border: 1px solid var(--border-faint);
-  border-bottom: none; /* Remove bottom border to extend off screen */
-  border-top-left-radius: var(--radius-lg);
-  border-top-right-radius: var(--radius-lg);
-  border-bottom-left-radius: 0; /* Square bottom corners */
-  border-bottom-right-radius: 0;
+  border-radius: var(--radius-lg); /* Full rounded corners */
   padding: var(--space-2);
-  padding-bottom: var(--space-6); /* Extra padding at bottom */
   box-shadow: 0 1px 2px rgba(0,0,0,.08);
-  height: calc(100vh - 60px); /* Extend further past the bottom to eliminate gap */
+  height: calc(100vh - var(--header-height) - var(--space-3) - 2px); /* Perfect alignment with input area */
   overflow: auto;
-  align-self: stretch;
+  align-self: flex-start;
 }
 
-.history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }
-.history-title { font-size: var(--text-sm); color: var(--text-secondary); font-weight: 600; }
-.history-new { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: var(--radius-sm); padding: var(--space-1); cursor: pointer; }
-.history-new:hover { filter: brightness(1.05); }
+.history-header { 
+  display: flex; 
+  align-items: center; 
+  justify-content: space-between; 
+  margin: calc(var(--space-2) * -1) calc(var(--space-2) * -1) var(--space-2) calc(var(--space-2) * -1); 
+  padding: var(--space-3) var(--space-2); 
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-light);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0; 
+}
+.history-title { font-size: var(--text-sm); color: var(--text-primary); font-weight: 600; }
+.history-new { display: none; }
 .history-list { display: flex; flex-direction: column; gap: var(--space-1); }
 .history-empty { color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-3); text-align: center; }
 .history-item { text-align: left; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); cursor: pointer; }
@@ -293,6 +299,11 @@ body {
   border-color: var(--border-light);
 }
 
+:root[data-theme="light"] .history-header {
+  background: var(--bg-quaternary);
+  border-bottom: 1px solid var(--border);
+}
+
 .header-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -369,7 +380,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-7);
-  padding-bottom: calc(var(--space-12) + var(--space-8)); /* Account for fixed input area height */
+  padding-bottom: var(--space-8); /* Space for input area */
   display: flex;
   flex-direction: column;
   gap: var(--space-7);
@@ -633,29 +644,24 @@ body {
 .input-area {
   display: flex;
   padding: var(--space-4) var(--space-6);
-  padding-bottom: calc(var(--space-4) + 20px); /* Extra padding to extend past viewport */
   gap: var(--space-3);
   border: 1px solid var(--border-faint);
-  border-bottom: none;
   /* Fallback for browsers without color-mix support */
   background: var(--bg-secondary);
   background: color-mix(in oklab, var(--bg-secondary) 70%, transparent);
   align-items: center; /* align input and button */
-  position: absolute; /* Use absolute positioning */
-  bottom: 0;
-  left: 0;
-  right: 0;
+  position: sticky; /* Back to sticky to avoid overlap */
+  bottom: var(--space-3);
   backdrop-filter: var(--blur-bg);
   box-shadow: 0 -10px 30px rgba(0,0,0,.14);
-  border-top-left-radius: var(--radius-xl);
-  border-top-right-radius: var(--radius-xl);
+  border-radius: var(--radius-xl); /* Full rounded corners */
   width: 100%;
   max-width: min(1100px, 96vw);
   margin: 0 auto;
+  margin-top: var(--space-4); /* Gap between conversation and input */
   --composer-height: var(--space-12);
   flex-shrink: 0; /* Prevent input from shrinking */
   z-index: 10;
-  transform: translateY(20px); /* Push it down past the viewport edge */
 }
 
 .input-field {
@@ -846,7 +852,7 @@ body {
   .workarea { 
     flex-direction: column; 
     gap: var(--space-3);
-    min-height: calc(100vh - 120px); /* Account for header */
+    min-height: calc(100vh - var(--header-height) - var(--space-8)); /* Account for header and mobile spacing */
   }
   
   .history-pane { 
