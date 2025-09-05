@@ -35,7 +35,11 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, 
     <div className="loading-details" aria-live="polite">
       <div className="loading-title">
         <span>Searching documentation and generating response</span>
-        <span className="dots" aria-hidden></span>
+        <span className="dots" aria-hidden>
+          <span>.</span>
+          <span>.</span>
+          <span>.</span>
+        </span>
       </div>
       <ul className="loading-steps">
         {phases.map((label, i) => {

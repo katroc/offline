@@ -504,8 +504,18 @@ body {
 
 .loading-details { display: flex; flex-direction: column; gap: 10px; }
 .loading-title { color: var(--text-secondary); font-weight: 500; display: inline-flex; align-items: baseline; gap: 4px; }
-.loading-title .dots { display: inline-block; width: 0ch; overflow: hidden; animation: ellipsis 1.2s steps(4,end) infinite; }
-.loading-title .dots::after { content: '...'; }
+.loading-title .dots {
+  display: inline-grid;
+  grid-auto-flow: column;
+  width: 3ch; /* reserve width to avoid layout shift */
+}
+.loading-title .dots > span {
+  animation: dotblink 1.2s infinite ease-in-out;
+  opacity: 0.2;
+}
+.loading-title .dots > span:nth-child(1) { animation-delay: 0s; }
+.loading-title .dots > span:nth-child(2) { animation-delay: 0.2s; }
+.loading-title .dots > span:nth-child(3) { animation-delay: 0.4s; }
 .loading-steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .loading-step { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 14px; }
 .loading-step.active .step-label { color: var(--text-secondary); }
@@ -522,7 +532,12 @@ body {
   to { transform: rotate(360deg); }
 }
 
-@keyframes ellipsis { to { width: 3ch; } }
+@keyframes dotblink { 0%, 60% { opacity: 0.2; } 30% { opacity: 1; } }
+
+/* Flatten background for thinking/loading message (no gradient) */
+.message-assistant .message-content.loading {
+  background: var(--bg-secondary);
+}
 
 /* Empty state styling */
 .conversation:empty::before {
