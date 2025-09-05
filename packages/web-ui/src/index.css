@@ -494,11 +494,13 @@ body {
   width: 100%;
   max-width: min(1100px, 96vw);
   margin: 0 auto;
+  --composer-height: 50px;
 }
 
 .input-field {
   flex: 1;
-  padding: 14px 16px;
+  height: var(--composer-height);
+  padding: 0 16px;
   border: 1px solid var(--border-faint);
   border-radius: 999px;
   font-size: 16px;
@@ -506,8 +508,8 @@ body {
   color: var(--text-primary);
   transition: all 0.2s ease;
   resize: none;
-  min-height: 24px;
-  max-height: 200px;
+  min-height: var(--composer-height);
+  max-height: var(--composer-height);
   line-height: 1.5;
   font-family: inherit;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
@@ -524,7 +526,8 @@ body {
 }
 
 .send-button {
-  padding: 14px 18px; /* height closer to input */
+  height: var(--composer-height);
+  padding: 0 18px; /* equal height via fixed composer height */
   background: var(--accent);
   color: white;
   border: none;

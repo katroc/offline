@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { RagQuery } from '@app/shared';
 import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
-import { WelcomePanel } from './components/WelcomePanel';
 
 interface Message {
   id: string;
@@ -253,12 +252,7 @@ function App() {
         </header>
 
         <div className="conversation">
-          {messages.length === 0 && !isLoading && (
-            <WelcomePanel
-              recent={messages.filter(m => m.type === 'user').map(m => m.content)}
-              onPick={(t) => { setInput(t); }}
-            />
-          )}
+          {/* No welcome box; keep area clean when empty */}
           
           {messages.map((message, index) => (
             <div key={message.id} className={`message message-${message.type}`}>
