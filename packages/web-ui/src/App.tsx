@@ -16,11 +16,30 @@ interface Message {
 }
 
 function App() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  // Storage keys
+  const STORAGE_KEYS = {
+    messages: 'chat:messages:v1',
+    draft: 'chat:draft:v1',
+    space: 'chat:space:v1',
+    labels: 'chat:labels:v1',
+    model: 'chat:model:v1',
+  } as const;
+
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.messages) : null;
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as Message[];
+      return [];
+    } catch {
+      return [];
+    }
+  });
+  const [input, setInput] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.draft) || '' : ''));
   const [isLoading, setIsLoading] = useState(false);
-  const [space, setSpace] = useState('');
-  const [labels, setLabels] = useState('');
+  const [space, setSpace] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.space) || '' : ''));
+  const [labels, setLabels] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.labels) || '' : ''));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
@@ -28,7 +47,7 @@ function App() {
     const prefersLight = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
     return prefersLight ? 'light' : 'dark';
   });
-  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.model) || '' : ''));
   const [availableModels, setAvailableModels] = useState<Array<{id: string, object: string}>>([]);
 
   const scrollToBottom = () => {
@@ -43,6 +62,34 @@ function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  // Persist state to localStorage
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+    } catch {}
+  }, [messages]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.draft, input);
+  }, [input]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.space, space);
+  }, [space]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.labels, labels);
+  }, [labels]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (selectedModel) localStorage.setItem(STORAGE_KEYS.model, selectedModel);
+  }, [selectedModel]);
 
   // Fetch available models on mount
   useEffect(() => {
@@ -63,6 +110,13 @@ function App() {
     };
     fetchModels();
   }, [selectedModel]);
+
+  const clearConversation = () => {
+    setMessages([]);
+    try {
+      if (typeof window !== 'undefined') localStorage.removeItem(STORAGE_KEYS.messages);
+    } catch {}
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,7 +224,7 @@ function App() {
                   </svg>
                 )}
               </button>
-              <button className="header-button" title="New conversation">
+              <button className="header-button" title="New conversation" onClick={clearConversation}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                   <polyline points="9,22 9,12 15,12 15,22"/>
