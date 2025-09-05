@@ -775,10 +775,16 @@ body {
   border: 1px solid var(--border);
 }
 
-.copy-button {
+.copy-controls {
   position: absolute;
   top: 8px;
   right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-button {
   background: transparent; /* icon-only */
   border: none;
   border-radius: 50%;
@@ -803,6 +809,24 @@ body {
 .copy-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+.copy-toast {
+  background: var(--bg-quaternary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  animation: fadeSlide 1.2s ease both;
+}
+
+@keyframes fadeSlide {
+  0% { opacity: 0; transform: translateY(6px); }
+  15% { opacity: 1; transform: translateY(0); }
+  85% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
 }
 
 /* Callouts */
