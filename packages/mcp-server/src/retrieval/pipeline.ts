@@ -6,7 +6,7 @@ import type { Chunker } from './chunker.js';
 import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
 
 export interface RAGPipeline {
-  retrieveForQuery(query: string, filters: Filters, topK: number): Promise<RetrievalResult>;
+  retrieveForQuery(query: string, filters: Filters, topK: number, model?: string): Promise<RetrievalResult>;
   indexDocument(document: DocumentSource): Promise<void>;
   deleteDocument(pageId: string): Promise<void>;
 }
@@ -24,7 +24,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
     private localDocStore?: LocalDocStore
   ) {}
 
-  async retrieveForQuery(query: string, filters: Filters, topK: number): Promise<RetrievalResult> {
+  async retrieveForQuery(query: string, filters: Filters, topK: number, model?: string): Promise<RetrievalResult> {
     console.log(`RAG Pipeline: Retrieving for query "${query}" with filters:`, filters);
 
     // 1. Get candidate documents
@@ -83,7 +83,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
       return { chunks: [], citations: [] };
     }
 
-    const rankedResults = await rankDocumentsByRelevance(query, documents, Math.min(topK, documents.length));
+    const rankedResults = await rankDocumentsByRelevance(query, documents, Math.min(topK, documents.length), model);
     console.log(`LLM ranked ${rankedResults.length} documents by relevance`);
 
     // 3. Chunk documents and score chunks by relevance to the query
@@ -252,10 +252,22 @@ export class DefaultRAGPipeline implements RAGPipeline {
     for (const chunk of chunks) {
       const key = `${chunk.pageId}-${chunk.sectionAnchor || 'main'}`;
       if (!citationMap.has(key)) {
-        // Prefer chunk.url if present; otherwise build from env base URL
+        // Always construct absolute URLs
         const base = process.env.CONFLUENCE_BASE_URL || 'https://confluence.local';
         const baseUrl = base.endsWith('/') ? base.slice(0, -1) : base;
-        const rawUrl = chunk.url || `${baseUrl}/pages/${chunk.pageId}`;
+        
+        let rawUrl: string;
+        if (chunk.url && chunk.url.startsWith('http')) {
+          // Already absolute URL
+          rawUrl = chunk.url;
+        } else if (chunk.url) {
+          // Relative URL - make it absolute
+          rawUrl = `${baseUrl}${chunk.url}`;
+        } else {
+          // Fallback to page ID construction
+          rawUrl = `${baseUrl}/pages/${chunk.pageId}`;
+        }
+        
         const url = chunk.sectionAnchor ? `${rawUrl}#${chunk.sectionAnchor}` : rawUrl;
         citationMap.set(key, {
           pageId: chunk.pageId,

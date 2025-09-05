@@ -110,8 +110,8 @@ export class ConfluenceClient implements DocumentSourceClient {
     const parts: string[] = [];
 
     if (params.query) {
-      // Tokenize and keep meaningful terms; AND them to improve recall with typos
-      const stop = new Set(['how','do','i','use','what','is','the','a','an','to','of','for','about','tell','me']);
+      // Improved query building for better search results
+      const stop = new Set(['how','do','i','use','what','is','the','a','an','to','of','for','about','tell','me','can','you','help','with','have','info','information','we','on','in','at','it','that','this']);
       const tokens = params.query
         .toLowerCase()
         .replace(/[^a-z0-9\s-]/g, ' ')
@@ -119,13 +119,24 @@ export class ConfluenceClient implements DocumentSourceClient {
         .filter(Boolean)
         .filter(w => !stop.has(w))
         .map(w => w.trim())
-        .filter(w => w.length >= 3);
+        .filter(w => w.length >= 2); // Allow 2-char terms for things like CVE IDs
 
       const unique = Array.from(new Set(tokens));
-      const top = unique.slice(0, 4); // cap terms
-
-      if (top.length > 0) {
-        const andTerms = top.map(t => `text ~ "${t}"`).join(' and ');
+      
+      // Prioritize important terms (CVEs, technical terms, etc.)
+      const important = unique.filter(t => 
+        t.startsWith('cve-') || 
+        (t.length >= 6 && !['information'].includes(t)) || 
+        (/^[A-Z0-9-]{4,}$/i.test(t) && t.length >= 4)
+      );
+      
+      if (important.length > 0) {
+        // Use OR for important terms to be less restrictive
+        const orTerms = important.slice(0, 3).map(t => `text ~ "${t}"`).join(' or ');
+        parts.push(`(${orTerms})`);
+      } else if (unique.length > 0) {
+        // For regular queries, use AND for first 2 terms only
+        const andTerms = unique.slice(0, 2).map(t => `text ~ "${t}"`).join(' and ');
         parts.push(`(${andTerms})`);
       } else {
         // Fallback to original phrase if nothing survived

@@ -8,10 +8,27 @@ import { LocalDocStore } from './store/local-doc-store.js';
 import { MockVectorStore, LanceDBVectorStore } from './retrieval/vector-store.js';
 import { SimpleChunker } from './retrieval/chunker.js';
 import { DefaultRAGPipeline } from './retrieval/pipeline.js';
+import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
 
 // Singleton instances (in production, these would be properly managed)
 let ragPipeline: DefaultRAGPipeline | null = null;
+let smartPipeline: SmartRAGPipeline | null = null;
 let localDocStore: LocalDocStore | null = null;
+
+async function getSmartPipeline(): Promise<SmartRAGPipeline> {
+  if (!smartPipeline) {
+    // Initialize document source client
+    const confluenceClient = new ConfluenceClient({
+      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
+      username: process.env.CONFLUENCE_USERNAME || '',
+      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
+    });
+
+    smartPipeline = new SmartRAGPipeline(confluenceClient);
+    console.log('Initialized Smart RAG Pipeline with LLM document analysis');
+  }
+  return smartPipeline;
+}
 
 async function getRagPipeline(): Promise<DefaultRAGPipeline> {
   if (!ragPipeline) {
@@ -103,7 +120,7 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
     };
 
     try {
-      const answer = await chatCompletion([system, user]);
+      const answer = await chatCompletion([system, user], { model: query.model });
       return { answer, citations: mockCitations };
     } catch (err) {
       console.warn('LLM call failed:', err);
@@ -119,9 +136,19 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
       updatedAfter: query.updatedAfter
     };
 
-    // Retrieve relevant context
-    const pipeline = await getRagPipeline();
-    const retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK);
+    // Use Smart Pipeline by default, fall back to traditional pipeline if needed
+    const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
+    
+    let retrieval;
+    if (useSmartPipeline) {
+      console.log('Using Smart Pipeline with LLM document analysis');
+      const smartPipe = await getSmartPipeline();
+      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model);
+    } else {
+      console.log('Using traditional pipeline');
+      const pipeline = await getRagPipeline();
+      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model);
+    }
 
     if (!useLlm) {
       return { 
@@ -151,7 +178,7 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
       content: `Context:\n${contextText}\n\nQuestion: ${query.question}`
     };
 
-    const answer = await chatCompletion([system, user]);
+    const answer = await chatCompletion([system, user], { model: query.model });
     return { answer, citations: retrieval.citations };
 
   } catch (err) {

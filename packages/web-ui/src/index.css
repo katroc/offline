@@ -17,7 +17,7 @@
 
   /* Typography */
   --text-primary: #e7eaf2;
-  --text-secondary: #b8bfcc;
+  --text-secondary: #c3c9d6;
   --text-muted: #9299aa;
   --text-faint: #757c8b;
 
@@ -83,7 +83,7 @@ body {
   color: var(--text-primary);
   background: var(--bg-primary);
   line-height: 1.6;
-  font-size: 14px;
+  font-size: clamp(15px, 1.2vw, 16px);
   transition: background-color .25s ease, color .25s ease;
 }
 
@@ -133,6 +133,8 @@ body {
   max-width: min(1100px, 96vw);
   margin: 0 auto;
   padding: 10px 14px;
+  /* Fallback for browsers without color-mix support */
+  background: var(--bg-secondary);
   background: color-mix(in oklab, var(--bg-secondary) 70%, transparent);
   border: 1px solid var(--border-faint);
   border-radius: var(--radius-xl);
@@ -168,13 +170,36 @@ body {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+}
+
+.model-selector {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 180px;
+}
+
+.model-selector:hover {
+  border-color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.model-selector:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--accent);
 }
 
 .header-button {
   background: none;
   border: none;
-  padding: 8px;
+  padding: 10px;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   cursor: pointer;
@@ -183,6 +208,8 @@ body {
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
+  min-width: 40px;
+  min-height: 40px;
 }
 
 .header-button:hover {
@@ -198,6 +225,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 28px;
+  /* Fallback for browsers without color-mix support */
+  background: var(--bg-secondary);
   background: color-mix(in oklab, var(--bg-secondary) 40%, transparent);
   border: 1px solid var(--border-faint);
   border-radius: var(--radius-xl);
@@ -256,12 +285,15 @@ body {
   font-weight: 400;
   margin-bottom: 8px;
   box-shadow: 0 1px 2px rgba(0,0,0,.18);
+  /* Align user messages to the right */
+  margin-left: auto;
 }
 
 .message-assistant .message-content {
   width: auto;
   max-width: var(--measure);
-  margin-left: auto;
+  /* Align assistant messages to the left */
+  margin-left: 0;
   margin-right: auto;
   background: linear-gradient(180deg, var(--bg-secondary), var(--bg-tertiary));
   color: var(--text-primary);
@@ -288,6 +320,7 @@ body {
   border-radius: 6px;
   padding: 0 6px;
   font-size: 0.95em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .message-content pre {
   background: var(--bg-tertiary);
@@ -297,6 +330,7 @@ body {
   overflow: auto;
   font-size: 0.95em;
   line-height: 1.6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .message-content ul, .message-content ol { padding-left: 1.2em; }
 .message-content li { line-height: 1.8; }
@@ -353,6 +387,8 @@ body {
   gap: 12px;
   border: 1px solid var(--border-faint);
   border-bottom: none;
+  /* Fallback for browsers without color-mix support */
+  background: var(--bg-secondary);
   background: color-mix(in oklab, var(--bg-secondary) 70%, transparent);
   align-items: flex-end;
   position: sticky;
@@ -418,6 +454,15 @@ body {
   background: var(--text-muted);
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+/* Focus visibility for interactive elements */
+.header-button:focus-visible,
+.send-button:focus-visible,
+.citation:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
 }
 
 .filters {
@@ -487,6 +532,18 @@ body {
   text-align: center;
   padding: 80px 40px;
   line-height: 1.6;
+}
+
+/* Reduced motion and effects for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+  .header-content,
+  .input-area {
+    backdrop-filter: none;
+  }
 }
 
 /* Scrollbar styling */

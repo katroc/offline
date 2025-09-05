@@ -35,6 +35,7 @@ export interface RagQuery {
   labels?: string[];
   updatedAfter?: string; // ISO8601
   topK?: number;
+  model?: string; // Optional model override
 }
 
 export interface RagResponse {

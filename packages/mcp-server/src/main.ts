@@ -30,6 +30,23 @@ app.addHook('onResponse', async (req, reply) => {
 // Health
 app.get('/health', async () => ({ status: 'ok' }));
 
+// List available LM Studio models
+app.get('/models', async (req, reply) => {
+  try {
+    const baseUrl = process.env.LLM_BASE_URL || 'http://127.0.0.1:1234';
+    const response = await fetch(`${baseUrl}/v1/models`);
+    if (!response.ok) {
+      return reply.code(502).send({ error: 'Failed to fetch models from LM Studio' });
+    }
+    const data = await response.json();
+    return reply.send(data);
+  } catch (err) {
+    const reqId = (req as any).reqId as string | undefined;
+    logError({ reqId, method: req.method, url: req.url, err });
+    return reply.code(502).send({ error: 'LM Studio not available' });
+  }
+});
+
 // RAG query (using our validator + orchestrator stub)
 app.post('/rag/query', async (req, reply) => {
   try {
@@ -37,9 +54,9 @@ app.post('/rag/query', async (req, reply) => {
     if (!result.ok) {
       return reply.code(400).send({ error: result.error });
     }
-    const { question, space, labels, updatedAfter, topK } = result.value;
-    const rag = await ragQuery({ question, space, labels, updatedAfter, topK });
-    return reply.send({ ...rag, meta: { request: { space, labels, updatedAfter, topK } } });
+    const { question, space, labels, updatedAfter, topK, model } = result.value;
+    const rag = await ragQuery({ question, space, labels, updatedAfter, topK, model });
+    return reply.send({ ...rag, meta: { request: { space, labels, updatedAfter, topK, model } } });
   } catch (err) {
     const reqId = (req as any).reqId as string | undefined;
     logError({ reqId, method: req.method, url: req.url, err });

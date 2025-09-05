@@ -14,7 +14,8 @@ export interface RelevanceResult {
 export async function rankDocumentsByRelevance(
   query: string,
   documents: DocumentSource[],
-  topK: number = 5
+  topK: number = 5,
+  model?: string
 ): Promise<RelevanceResult[]> {
   if (documents.length === 0) return [];
 
@@ -52,6 +53,7 @@ ${docSummaries}`
 
   try {
     const response = await chatCompletion([system, user], { 
+      model,
       temperature: 0.1, // Low temperature for consistent ranking
       maxTokens: 1000 
     });

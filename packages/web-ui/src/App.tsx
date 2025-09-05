@@ -26,6 +26,8 @@ function App() {
     const prefersLight = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
     return prefersLight ? 'light' : 'dark';
   });
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [availableModels, setAvailableModels] = useState<Array<{id: string, object: string}>>([]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,6 +41,26 @@ function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  // Fetch available models on mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const response = await fetch('/models');
+        if (response.ok) {
+          const data = await response.json();
+          setAvailableModels(data.data || []);
+          // Set first model as default if none selected
+          if (!selectedModel && data.data?.length > 0) {
+            setSelectedModel(data.data[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch models:', error);
+      }
+    };
+    fetchModels();
+  }, [selectedModel]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +80,8 @@ function App() {
         question: input.trim(),
         space: space || undefined,
         labels: labels ? labels.split(',').map(l => l.trim()) : undefined,
-        topK: 5
+        topK: 5,
+        model: selectedModel || undefined
       };
 
       const response = await fetch('/rag/query', {
@@ -113,6 +136,18 @@ function App() {
               </div>
             </div>
             <div className="header-actions">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="model-selector"
+                title="Select model"
+              >
+                {availableModels.map(model => (
+                  <option key={model.id} value={model.id}>
+                    {model.id}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 className="header-button"
