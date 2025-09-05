@@ -9,7 +9,6 @@
   color-scheme: dark;
 
   /* Surfaces */
-  --header-height: 64px;
   --bg-primary: #0c0c0f;
   --bg-secondary: #141419;
   --bg-tertiary: #1a1a20;
@@ -120,7 +119,7 @@ body {
   gap: 16px;
   align-items: stretch;
   width: 100%;
-  margin: 16px auto 0; /* consistent gap below header */
+  margin: 12px auto 0; /* remove bottom gap below composer */
   max-width: min(1200px, 96vw);
   flex: 1;
 }
@@ -134,22 +133,22 @@ body {
   padding: 10px;
   box-shadow: 0 1px 2px rgba(0,0,0,.08);
   position: sticky;
-  top: calc(var(--header-height) + 16px);
-  height: calc(100vh - (var(--header-height) + 16px));
+  top: 12px; /* align with conversation top (which has 12px top margin) */
+  height: calc(100vh - 12px - 0px); /* extend to bottom of viewport */
   overflow: auto;
 }
 
 .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .history-title { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
-.history-new { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 6px; padding: var(--space-sm); cursor: pointer; }
+.history-new { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 6px; padding: 6px; cursor: pointer; }
 .history-new:hover { filter: brightness(1.05); }
-.history-list { display: flex; flex-direction: column; gap: var(--space-sm); }
-.history-empty { color: var(--text-muted); font-size: 13px; padding: var(--space-md); text-align: center; }
-.history-item { text-align: left; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: var(--space-md); cursor: pointer; }
+.history-list { display: flex; flex-direction: column; gap: 6px; }
+.history-empty { color: var(--text-muted); font-size: 13px; padding: 12px; text-align: center; }
+.history-item { text-align: left; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 10px; cursor: pointer; }
 .history-item:hover { background: var(--bg-hover); }
 .history-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 15%, transparent); }
 .history-item .item-title { color: var(--text-primary); font-size: 13px; line-height: 1.3; }
-.history-item .item-date { color: var(--text-faint); font-size: 11px; margin-top: var(--space-xs); }
+.history-item .item-date { color: var(--text-faint); font-size: 11px; margin-top: 4px; }
 
 .main-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
@@ -163,7 +162,6 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  margin-bottom: 0; /* space comes from workarea margin */
 }
 
 .header-content {
@@ -322,10 +320,10 @@ body {
 .conversation {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-xl);
+  padding: 28px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-xl);
+  gap: 28px;
   /* Fallback for browsers without color-mix support */
   background: var(--bg-secondary);
   background: color-mix(in oklab, var(--bg-secondary) 40%, transparent);
@@ -334,7 +332,7 @@ body {
   box-shadow: 0 10px 30px rgba(0,0,0,.18) inset, 0 1px 0 rgba(255,255,255,.02) inset;
   width: 100%;
   max-width: min(1100px, 96vw);
-  margin: 0 auto var(--space-md); /* top gap handled by workarea */
+  margin: 0 auto 12px; /* top gap handled by workarea */
   align-items: stretch;
 }
 
