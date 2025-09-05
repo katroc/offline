@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { RagQuery } from '@app/shared';
 import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
+import { HistoryPane, type HistoryConversation } from './components/HistoryPane';
 
 interface Message {
   id: string;
@@ -15,26 +16,57 @@ interface Message {
   }>;
 }
 
+interface Conversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: Message[];
+}
+
 function App() {
   // Storage keys
   const STORAGE_KEYS = {
-    messages: 'chat:messages:v1',
+    conversations: 'chat:conversations:v1',
+    activeId: 'chat:activeId:v1',
     draft: 'chat:draft:v1',
     space: 'chat:space:v1',
     labels: 'chat:labels:v1',
     model: 'chat:model:v1',
+    legacyMessages: 'chat:messages:v1',
   } as const;
 
-  const [messages, setMessages] = useState<Message[]>(() => {
+  // Load conversations (migrate from legacy single-thread messages if present)
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
     try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.messages) : null;
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as Message[];
+      if (typeof window === 'undefined') return [];
+      const raw = localStorage.getItem(STORAGE_KEYS.conversations);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed as Conversation[];
+      }
+      // Migration: check old messages key
+      const legacy = localStorage.getItem(STORAGE_KEYS.legacyMessages);
+      if (legacy) {
+        const msgs = JSON.parse(legacy) as Message[];
+        const now = Date.now();
+        const conv: Conversation = {
+          id: String(now),
+          title: msgs.find(m => m.type === 'user')?.content?.slice(0, 60) || 'Conversation',
+          createdAt: now,
+          updatedAt: now,
+          messages: msgs,
+        };
+        return [conv];
+      }
       return [];
     } catch {
       return [];
     }
+  });
+  const [activeId, setActiveId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(STORAGE_KEYS.activeId) || (null as string | null);
   });
   const [input, setInput] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.draft) || '' : ''));
   const [isLoading, setIsLoading] = useState(false);
@@ -56,7 +88,7 @@ function App() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [conversations, activeId]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -65,13 +97,16 @@ function App() {
 
   
 
-  // Persist state to localStorage
+  // Persist conversations and active selection
   useEffect(() => {
-    try {
-      if (typeof window === 'undefined') return;
-      localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
-    } catch {}
-  }, [messages]);
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(conversations));
+  }, [conversations]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (activeId) localStorage.setItem(STORAGE_KEYS.activeId, activeId);
+  }, [activeId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -113,12 +148,17 @@ function App() {
     fetchModels();
   }, [selectedModel]);
 
-  const clearConversation = () => {
-    setMessages([]);
-    try {
-      if (typeof window !== 'undefined') localStorage.removeItem(STORAGE_KEYS.messages);
-    } catch {}
+  const createConversation = () => {
+    const now = Date.now();
+    const conv: Conversation = { id: String(now), title: 'New conversation', createdAt: now, updatedAt: now, messages: [] };
+    setConversations(prev => [conv, ...prev]);
+    setActiveId(conv.id);
   };
+
+  const current = conversations.find(c => c.id === activeId) || conversations[0];
+  useEffect(() => {
+    if (!activeId && conversations.length > 0) setActiveId(conversations[0].id);
+  }, [activeId, conversations.length]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,8 +169,22 @@ function App() {
       type: 'user',
       content: input.trim()
     };
-
-    setMessages(prev => [...prev, userMessage]);
+    if (!current) {
+      createConversation();
+    }
+    setConversations(prev => {
+      const list = [...prev];
+      const idx = list.findIndex(c => c.id === (current?.id || activeId));
+      const targetIdx = idx >= 0 ? idx : 0;
+      const conv = { ...(list[targetIdx] || { id: String(Date.now()), title: 'New conversation', createdAt: Date.now(), updatedAt: Date.now(), messages: [] }) } as Conversation;
+      conv.messages = [...conv.messages, userMessage];
+      if (!conv.title || conv.title === 'New conversation') {
+        conv.title = userMessage.content.slice(0, 60);
+      }
+      conv.updatedAt = Date.now();
+      list[targetIdx] = conv;
+      return list;
+    });
     setIsLoading(true);
 
     try {
@@ -168,14 +222,32 @@ function App() {
         citations: result.citations
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      setConversations(prev => {
+        const list = [...prev];
+        const idx = list.findIndex(c => c.id === (current?.id || activeId));
+        const targetIdx = idx >= 0 ? idx : 0;
+        const conv = { ...list[targetIdx] } as Conversation;
+        conv.messages = [...conv.messages, assistantMessage];
+        conv.updatedAt = Date.now();
+        list[targetIdx] = conv;
+        return list;
+      });
     } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
         content: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setConversations(prev => {
+        const list = [...prev];
+        const idx = list.findIndex(c => c.id === (current?.id || activeId));
+        const targetIdx = idx >= 0 ? idx : 0;
+        const conv = { ...(list[targetIdx] || { id: String(Date.now()), title: 'New conversation', createdAt: Date.now(), updatedAt: Date.now(), messages: [] }) } as Conversation;
+        conv.messages = [...(conv.messages || []), errorMessage];
+        conv.updatedAt = Date.now();
+        list[targetIdx] = conv;
+        return list;
+      });
     } finally {
       setIsLoading(false);
       setInput('');
@@ -226,7 +298,7 @@ function App() {
                   </svg>
                 )}
               </button>
-              <button className="header-button" title="New conversation" onClick={clearConversation} aria-label="Start new conversation" disabled={messages.length === 0}>
+              <button className="header-button" title="New conversation" onClick={createConversation} aria-label="Start new conversation">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                   <path d="M12 5v14M5 12h14"/>
                 </svg>
@@ -253,10 +325,18 @@ function App() {
           )}
         </header>
 
-        <div className="conversation">
-          {/* No welcome box; keep area clean when empty */}
-          
-          {messages.map((message, index) => (
+        <div className="workarea">
+          <HistoryPane
+            items={conversations.map<HistoryConversation>(c => ({ id: c.id, title: c.title || 'Untitled', updatedAt: c.updatedAt }))}
+            activeId={current?.id || null}
+            onSelect={(id) => setActiveId(id)}
+            onNew={createConversation}
+          />
+          <div className="main-pane">
+            <div className="conversation">
+              {/* No welcome box; keep area clean when empty */}
+              
+          {(current?.messages || []).map((message, index) => (
             <div key={message.id} className={`message message-${message.type}`}>
               {message.type === 'user' ? (
                 <div className="message-content">
@@ -266,7 +346,7 @@ function App() {
                 <SmartResponse 
                   answer={message.content}
                   citations={message.citations || []}
-                  query={index > 0 ? messages[index - 1]?.content || '' : ''}
+                  query={index > 0 ? (current?.messages[index - 1]?.content || '') : ''}
                 />
               )}
             </div>
@@ -285,9 +365,9 @@ function App() {
           )}
           
           <div ref={messagesEndRef} />
-        </div>
+            </div>
 
-        <form onSubmit={handleSubmit} className="input-area">
+            <form onSubmit={handleSubmit} className="input-area">
           <input
             type="text"
             value={input}
@@ -303,7 +383,9 @@ function App() {
           >
             Send
           </button>
-        </form>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );
