@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { RagQuery } from '@app/shared';
 import { SmartResponse } from './SmartResponse';
+import { LoadingProgress } from './components/LoadingProgress';
 
 interface Message {
   id: string;
@@ -226,7 +227,11 @@ function App() {
           {isLoading && (
             <div className="message message-assistant">
               <div className="message-content loading">
-                Searching documentation and generating response...
+                <LoadingProgress
+                  query={input.trim()}
+                  space={space || undefined}
+                  labels={labels ? labels.split(',').map(l => l.trim()).filter(Boolean) : []}
+                />
               </div>
             </div>
           )}
