@@ -17,6 +17,42 @@ export interface ConversationContext {
 }
 
 /**
+ * Extracts JSON from LLM response that may be wrapped in markdown code blocks
+ */
+function extractJsonFromResponse(response: string): any {
+  const trimmed = response.trim();
+  
+  // Try parsing directly first (for well-behaved responses)
+  try {
+    return JSON.parse(trimmed);
+  } catch (e) {
+    // If direct parsing fails, try extracting from markdown code blocks
+  }
+  
+  // Look for JSON wrapped in ```json blocks
+  const jsonBlockMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/i);
+  if (jsonBlockMatch) {
+    try {
+      return JSON.parse(jsonBlockMatch[1].trim());
+    } catch (e) {
+      // If that fails, continue to other methods
+    }
+  }
+  
+  // Look for JSON between { and } (more aggressive)
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      // If all else fails, throw the original error
+    }
+  }
+  
+  throw new Error(`Could not extract valid JSON from response: ${trimmed.substring(0, 100)}...`);
+}
+
+/**
  * Uses LLM to analyze documents for relevance to user queries
  * Much smarter than keyword matching
  */
@@ -90,7 +126,7 @@ export class LLMDocumentAnalyzer {
 
 Consider conversation context if provided. Be precise and analytical.
 
-Respond ONLY in this JSON format:
+Respond ONLY with valid JSON (no markdown, no code blocks, no extra text):
 {
   "relevanceScore": 0.8,
   "answersQuery": true,
@@ -126,7 +162,7 @@ Analyze this document's relevance to the query.`
         maxTokens: 500 
       });
       
-      const analysis = JSON.parse(response.trim());
+      const analysis = extractJsonFromResponse(response);
       
       const result: AnalysisResult = {
         document,
@@ -199,7 +235,7 @@ Analyze this document's relevance to the query.`
 2. Named entities (products, CVEs, technical terms, etc.)
 3. Evolving context (how questions relate to each other)
 
-Respond in JSON format:
+Respond ONLY with valid JSON (no markdown, no code blocks, no extra text):
 {
   "topicContext": ["security", "configuration"],
   "entities": ["CVE-2022-22965", "draw.io", "Spring Framework"]
@@ -218,7 +254,7 @@ Respond in JSON format:
         maxTokens: 300 
       });
       
-      const context = JSON.parse(response.trim());
+      const context = extractJsonFromResponse(response);
       
       return {
         previousQueries: queries,

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { RagQuery } from '@app/shared';
+import { SmartResponse } from './SmartResponse';
 
 interface Message {
   id: string;
@@ -206,26 +207,18 @@ function App() {
         <div className="conversation">
           {/* Empty state intentionally minimal in enterprise layout */}
           
-          {messages.map((message) => (
+          {messages.map((message, index) => (
             <div key={message.id} className={`message message-${message.type}`}>
-              <div className="message-content">
-                {message.content}
-              </div>
-              {message.citations && message.citations.length > 0 && (
-                <div className="message-citations">
-                  {message.citations.map((citation, index) => (
-                    <a
-                      key={index}
-                      href={citation.url + (citation.sectionAnchor ? '#' + citation.sectionAnchor : '')}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="citation"
-                    >
-                      {index + 1}. {citation.title}
-                      {citation.sectionAnchor && ` (${citation.sectionAnchor})`}
-                    </a>
-                  ))}
+              {message.type === 'user' ? (
+                <div className="message-content">
+                  {message.content}
                 </div>
+              ) : (
+                <SmartResponse 
+                  answer={message.content}
+                  citations={message.citations || []}
+                  query={index > 0 ? messages[index - 1]?.content || '' : ''}
+                />
               )}
             </div>
           ))}
