@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { RagQuery } from '@app/shared';
 import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
-import { ExamplesPanel } from './components/ExamplesPanel';
+import { WelcomePanel } from './components/WelcomePanel';
 
 interface Message {
   id: string;
@@ -255,7 +255,10 @@ function App() {
 
         <div className="conversation">
           {messages.length === 0 && !isLoading && (
-            <ExamplesPanel onPick={(t) => { setInput(t); }} />
+            <WelcomePanel
+              recent={messages.filter(m => m.type === 'user').map(m => m.content)}
+              onPick={(t) => { setInput(t); }}
+            />
           )}
           
           {messages.map((message, index) => (
