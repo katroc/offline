@@ -1,11 +1,11 @@
 # Cabin
 
-Monorepo (pnpm workspaces) for an air‑gapped Confluence QA assistant. It includes a Node/TypeScript MCP server (Fastify), a Vite + React UI, OpenAI‑compatible LLM calls (LM Studio or Ollama), and LanceDB for retrieval. Streaming answers and citations are supported.
+Monorepo (pnpm workspaces) for an Cabin Confluence QA assistant. It includes a Node/TypeScript MCP server (Fastify), a Vite + React UI, OpenAI‑compatible LLM calls (LM Studio or Ollama), and LanceDB for retrieval. Streaming answers and citations are supported.
 
 **Current Status**
 - **MCP server**: Implemented. Endpoints for health, models, chat completions, RAG query (sync + SSE), and admin sync/ingest. Smart retrieval pipeline with LLM‑assisted ranking and chunking is in place. LanceDB used when available; mock store fallback.
 - **Web UI**: Functional prototype with chat, streaming, sources panel, conversation history, export, model selection, and basic settings.
-- **Air‑gapped**: Works locally without egress. LLM and vector DB are local; Confluence access can be disabled or simulated via ingest.
+- **Cabin**: Works locally without egress. LLM and vector DB are local; Confluence access can be disabled or simulated via ingest.
 
 **Workspaces**
 - `packages/mcp-server` — Fastify server, Confluence integration, retrieval pipelines
@@ -48,7 +48,7 @@ Request types are in `packages/shared/src/index.ts:1`. Orchestrator and pipeline
 - `USE_SMART_PIPELINE` — set `false` to use traditional pipeline.
 - `PREFER_LIVE_SEARCH` — set `true` to favor live Confluence search over local store when available.
 
-**Air‑Gapped Ops**
+**Cabin Ops**
 - Preload LLM models with Ollama: `scripts/preload-models.sh` (export/import guidance included). See `scripts/preload-models.sh:1`.
 - Offline ingest from Confluence: `node tools/ingest-confluence.mjs --space KEY --maxPages 2 --server http://127.0.0.1:8787` (accepts `--base`, `--user`, `--token`). See `tools/ingest-confluence.mjs:1`.
 

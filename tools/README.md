@@ -10,5 +10,5 @@ Ingest Confluence (offline-friendly)
 - Sends payloads to `POST /admin/ingest`.
 
 Ollama model preload
-- `scripts/preload-models.sh` pulls and verifies LLMs for air‑gapped deployment.
+- `scripts/preload-models.sh` pulls and verifies LLMs for Cabin deployment.
 - Exports/imports are documented in the script footer.
