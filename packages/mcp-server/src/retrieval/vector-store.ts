@@ -81,22 +81,9 @@ export class LanceDBVectorStore implements VectorStore {
   }
 
   async initialize(): Promise<void> {
-    try {
-      const { connect } = await import('vectordb');
-      this.db = await connect(this.config.dbPath);
-      
-      // Try to open existing table
-      try {
-        this.table = await this.db.openTable(this.tableName);
-        console.log(`Opened existing LanceDB table: ${this.tableName}`);
-      } catch {
-        // Table doesn't exist, we'll create it on first upsert
-        console.log(`LanceDB table ${this.tableName} not found, will create on first upsert`);
-      }
-    } catch (error) {
-      console.error('Failed to initialize LanceDB:', error);
-      throw new Error(`LanceDB initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    // LanceDB temporarily disabled - using mock implementation
+    console.log('LanceDB vector store temporarily disabled, using mock implementation');
+    throw new Error('LanceDB not available - falling back to mock store');
   }
 
   async upsertChunks(chunks: Chunk[]): Promise<void> {

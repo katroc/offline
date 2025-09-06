@@ -19,7 +19,6 @@
     "@app/shared": "file:../shared",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
-    "vectordb": "^0.4.17",
     "uuid": "^9.0.1"
   }
 }
