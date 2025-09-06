@@ -3,7 +3,7 @@
 Monorepo (pnpm workspaces) for an Cabin Confluence QA assistant. It includes a Node/TypeScript MCP server (Fastify), a Vite + React UI, OpenAI‑compatible LLM calls (LM Studio or Ollama), and LanceDB for retrieval. Streaming answers and citations are supported.
 
 **Current Status**
-- **MCP server**: Implemented. Endpoints for health, models, chat completions, RAG query (sync + SSE), and admin sync/ingest. Smart retrieval pipeline with LLM‑assisted ranking and chunking is in place. LanceDB used when available; mock store fallback.
+- **MCP server**: Implemented. Endpoints for health, models, chat completions, and RAG query (sync + SSE). Smart retrieval pipeline with LLM‑assisted ranking and chunking is in place. LanceDB used when available; mock store fallback.
 - **Web UI**: Functional prototype with chat, streaming, sources panel, conversation history, export, model selection, and basic settings.
 - **Cabin**: Works locally without egress. LLM and vector DB are local; Confluence access can be disabled or simulated via ingest.
 
@@ -26,13 +26,11 @@ Monorepo (pnpm workspaces) for an Cabin Confluence QA assistant. It includes a N
 - Web UI dev: `pnpm -F @app/web-ui dev` (defaults to MCP on `http://127.0.0.1:8787`)
 
 **Key Endpoints (MCP Server)**
-- `GET /health` — health check. See `packages/mcp-server/src/main.ts:20`.
-- `GET /models` — proxy to LLM `v1/models` for UI model list. See `packages/mcp-server/src/main.ts:24`.
-- `POST /chat/completions` — OpenAI‑compatible wrapper used by UI utilities. See `packages/mcp-server/src/main.ts:44`.
-- `POST /rag/query` — synchronous RAG answer with citations. Body matches `RagQuery`. See `packages/mcp-server/src/main.ts:79`.
-- `POST /rag/stream` — SSE streaming: first citations, then content chunks, then done. See `packages/mcp-server/src/main.ts:94`.
-- `POST /admin/sync` — crawl Confluence spaces into local store. See `packages/mcp-server/src/main.ts:141`.
-- `POST /admin/ingest` — ingest pre‑fetched Confluence API results or document objects. See `packages/mcp-server/src/main.ts:166`.
+- `GET /health` — health check. See `packages/mcp-server/src/main.ts:32`.
+- `GET /models` — proxy to LLM `v1/models` for UI model list. See `packages/mcp-server/src/main.ts:35`.
+- `POST /chat/completions` — OpenAI‑compatible wrapper used by UI utilities. See `packages/mcp-server/src/main.ts:52`.
+- `POST /rag/query` — synchronous RAG answer with citations. Body matches `RagQuery`. See `packages/mcp-server/src/main.ts:94`.
+- `POST /rag/stream` — SSE streaming: first citations, then content chunks, then done. See `packages/mcp-server/src/main.ts:111`.
 
 Request types are in `packages/shared/src/index.ts:1`. Orchestrator and pipelines live in `packages/mcp-server/src/orchestrator.ts:1` and `packages/mcp-server/src/retrieval/pipeline.ts:1`.
 

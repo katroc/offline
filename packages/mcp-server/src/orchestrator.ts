@@ -1,9 +1,7 @@
 import type { RagResponse, Filters } from '@app/shared';
-import type { DocumentSource } from './sources/interfaces.js';
 import type { ValidRagQuery } from './validation.js';
 import { chatCompletion, chatCompletionStream, type ChatMessage } from './llm/chat.js';
 import { ConfluenceClient } from './sources/confluence.js';
-import { crawlSpace } from './sources/confluence-crawler.js';
 import { LocalDocStore } from './store/local-doc-store.js';
 import { MockVectorStore, LanceDBVectorStore } from './retrieval/vector-store.js';
 import { SimpleChunker } from './retrieval/chunker.js';
@@ -349,74 +347,3 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
   }
 }
 
-export async function syncConfluence(opts?: { spaces?: string[]; updatedAfter?: string; maxPages?: number; pageSize?: number }): Promise<{ total: number; bySpace: Record<string, number> }> {
-  const spaces = (opts?.spaces && opts.spaces.length > 0)
-    ? opts!.spaces
-    : (process.env.CONFLUENCE_SPACES || '').split(',').map(s => s.trim()).filter(Boolean);
-
-  if (spaces.length === 0) {
-    throw new Error('No spaces provided. Set CONFLUENCE_SPACES env or pass spaces in request.');
-  }
-
-  const client = new ConfluenceClient({
-    baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-    username: process.env.CONFLUENCE_USERNAME || '',
-    apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-  });
-
-  if (!localDocStore) localDocStore = new LocalDocStore();
-
-  const bySpace: Record<string, number> = {};
-  let total = 0;
-  for (const key of spaces) {
-    try {
-      const docs = await crawlSpace(client, key, { updatedAfter: opts?.updatedAfter, maxPages: opts?.maxPages, pageSize: opts?.pageSize });
-      localDocStore.upsertAll(docs);
-      bySpace[key] = docs.length;
-      total += docs.length;
-    } catch (err) {
-      console.warn(`Sync failed for space ${key}:`, err);
-      bySpace[key] = 0;
-    }
-  }
-
-  console.log(`Sync completed. Total documents: ${total}`);
-  return { total, bySpace };
-}
-
-// Ingest pre-fetched documents (e.g., pasted from Confluence API) into local store
-export async function ingestDocuments(docs: DocumentSource[]): Promise<{ total: number }>{
-  if (!docs || !Array.isArray(docs)) {
-    throw new Error('Invalid documents payload');
-  }
-  if (!localDocStore) localDocStore = new LocalDocStore();
-  localDocStore.upsertAll(docs);
-  return { total: docs.length };
-}
-
-// Helper to convert a subset of Confluence API page objects to DocumentSource
-export function mapConfluenceApiPagesToDocuments(pages: any[]): DocumentSource[] {
-  const results: DocumentSource[] = [];
-  for (const apiPage of pages || []) {
-    try {
-      const doc: DocumentSource = {
-        id: String(apiPage.id),
-        title: String(apiPage.title || ''),
-        spaceKey: String(apiPage?.space?.key || apiPage?.spaceKey || ''),
-        version: Number(apiPage?.version?.number || apiPage?.version || 1),
-        labels: Array.isArray(apiPage?.metadata?.labels?.results)
-          ? apiPage.metadata.labels.results.map((l: any) => String(l.name)).filter(Boolean)
-          : Array.isArray(apiPage?.labels) ? apiPage.labels.map((l: any) => String(l)).filter(Boolean) : [],
-        updatedAt: String(apiPage?.version?.when || apiPage?.updatedAt || new Date().toISOString()),
-        url: apiPage?._links?.base
-          ? `${apiPage._links.base}${apiPage._links.webui}`
-          : (apiPage?._links?.webui || apiPage?.url || undefined),
-        content: String(apiPage?.body?.storage?.value || apiPage?.content || '')
-      };
-      results.push(doc);
-    } catch {
-      // skip malformed entries
-    }
-  }
-  return results;
-}
