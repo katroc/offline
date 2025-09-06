@@ -1,60 +1,258 @@
-# Cabin
+# Cabin 🏠
 
-Monorepo (pnpm workspaces) for an Cabin Confluence QA assistant. It includes a Node/TypeScript MCP server (Fastify), a Vite + React UI, OpenAI‑compatible LLM calls (LM Studio or Ollama), and LanceDB for retrieval. Streaming answers and citations are supported.
+> **An air-gapped Confluence QA assistant powered by local LLMs**
 
-**Current Status**
-- **MCP server**: Implemented. Endpoints for health, models, chat completions, and RAG query (sync + SSE). Smart retrieval pipeline with LLM‑assisted ranking and chunking is in place. LanceDB used when available; mock store fallback.
-- **Web UI**: Functional prototype with chat, streaming, sources panel, conversation history, export, model selection, and basic settings.
-- **Cabin**: Works locally without egress. LLM and vector DB are local; Confluence access can be disabled or simulated via ingest.
+Cabin is a privacy-first, offline-capable question-answering system that helps teams query their Confluence documentation using local Large Language Models. Perfect for organizations that require air-gapped environments or want to keep their data completely private.
 
-**Workspaces**
-- `packages/mcp-server` — Fastify server, Confluence integration, retrieval pipelines
-- `packages/web-ui` — Vite + React client
-- `packages/shared` — Shared types/interfaces
-- `tools` — Ingest/util scripts
-- `infra` — Deployment notes (placeholders)
+## 🎯 What is Cabin?
 
-**Prereqs**
-- Node 20+, pnpm 9+
-- Optional: Ollama or LM Studio exposing an OpenAI‑compatible API
+Cabin transforms your Confluence documentation into an intelligent, searchable knowledge base that:
+- **Runs entirely offline** - No data leaves your network
+- **Uses local LLMs** - Compatible with LM Studio, Ollama, and other OpenAI-compatible servers
+- **Provides cited answers** - Every response includes source references
+- **Works air-gapped** - Perfect for secure environments
 
-**Quick Start**
-- Configure env: copy `.env.example` to `.env` and adjust values (LLM and Confluence). See `.env.example:1`.
-- Build all: `pnpm build`
-- Start MCP server: `pnpm -F @app/mcp-server start` (after build). See `packages/mcp-server/package.json:1`.
-- Dev mode (all workspaces): `pnpm dev`
-- Web UI dev: `pnpm -F @app/web-ui dev` (defaults to MCP on `http://127.0.0.1:8787`)
+## ✨ Key Features
 
-**Key Endpoints (MCP Server)**
-- `GET /health` — health check. See `packages/mcp-server/src/main.ts:32`.
-- `GET /models` — proxy to LLM `v1/models` for UI model list. See `packages/mcp-server/src/main.ts:35`.
-- `POST /chat/completions` — OpenAI‑compatible wrapper used by UI utilities. See `packages/mcp-server/src/main.ts:52`.
-- `POST /rag/query` — synchronous RAG answer with citations. Body matches `RagQuery`. See `packages/mcp-server/src/main.ts:94`.
-- `POST /rag/stream` — SSE streaming: first citations, then content chunks, then done. See `packages/mcp-server/src/main.ts:111`.
+- 🔒 **Privacy-First**: Your data never leaves your environment
+- 🚀 **Fast Retrieval**: Smart RAG pipeline with LLM-assisted document analysis
+- 📚 **Rich Citations**: Every answer includes clickable source references
+- 💬 **Chat Interface**: Intuitive web UI with conversation history
+- 📱 **Responsive Design**: Works on desktop and mobile
+- 🛠️ **Developer-Friendly**: Full TypeScript, modern stack
 
-Request types are in `packages/shared/src/index.ts:1`. Orchestrator and pipelines live in `packages/mcp-server/src/orchestrator.ts:1` and `packages/mcp-server/src/retrieval/pipeline.ts:1`.
+## 🏗️ Architecture
 
-**Environment Variables**
-- `MCP_PORT`, `MCP_HOST` — server bind (see `.env.example:1`).
-- `CONFLUENCE_BASE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN` — enable live Confluence. Leave empty to use mock citations or ingest.
-- `LLM_BASE_URL` — OpenAI‑compatible base URL (e.g., LM Studio `http://127.0.0.1:1234` or Ollama with compatibility). See `packages/mcp-server/src/llm/chat.ts:1`.
-- `LLM_CHAT_MODEL` — chat model id.
-- `LLM_EMBED_MODEL` — embedding model id (used by embedding/vector stack where applicable).
-- `REQUEST_TIMEOUT_MS` — outbound request timeout.
-- `LANCEDB_PATH` — vector db path (default `./data/lancedb`).
-- `USE_REAL_VECTORDB` — set `false` to force mock vector store.
-- `USE_SMART_PIPELINE` — set `false` to use traditional pipeline.
-- `PREFER_LIVE_SEARCH` — set `true` to favor live Confluence search over local store when available.
+Built as a monorepo with clean separation of concerns:
+- **MCP Server**: Node.js/Fastify backend with RAG pipeline
+- **Web UI**: React/Vite frontend with chat interface
+- **Shared Types**: Common interfaces across packages
+- **Local Storage**: LanceDB vector store with document indexing
 
-**Cabin Ops**
-- Preload LLM models with Ollama: `scripts/preload-models.sh` (export/import guidance included). See `scripts/preload-models.sh:1`.
-- Offline ingest from Confluence: `node tools/ingest-confluence.mjs --space KEY --maxPages 2 --server http://127.0.0.1:8787` (accepts `--base`, `--user`, `--token`). See `tools/ingest-confluence.mjs:1`.
+## 📊 Current Status
 
-**Development**
-- Typecheck all: `pnpm typecheck`
-- Build all: `pnpm build`
-- Run all dev scripts in parallel: `pnpm dev`
+- ✅ **MCP Server**: Production-ready with health, models, chat, and RAG endpoints
+- ✅ **Web UI**: Functional chat interface with history and export
+- ✅ **Air-Gapped Operation**: Fully functional without internet connectivity
+- ✅ **Security**: Linting and security scanning configured
 
-Notes
-- The UI targets the MCP server origin for API calls. If you proxy the server, configure the dev server accordingly in `packages/web-ui/vite.config.ts:1`.
-- If Confluence is not configured and no LLM is set, the server returns mock citations and stubbed answers suitable for UI development.
+## 📁 Project Structure
+
+```
+cabin/
+├── packages/
+│   ├── mcp-server/     # Fastify backend with RAG pipeline
+│   ├── web-ui/         # React frontend with chat interface  
+│   └── shared/         # Common types and interfaces
+├── tools/              # Data ingestion and utility scripts
+├── scripts/            # Deployment and setup scripts
+└── infra/              # Infrastructure configuration
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+- **Node.js 20+** and **pnpm 9+**
+- **Local LLM** (LM Studio, Ollama, or OpenAI-compatible server)
+- **Optional**: Confluence access for live data sync
+
+### 1️⃣ Setup Environment
+```bash
+# Clone and install dependencies
+git clone <your-repo>
+cd cabin
+pnpm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your LLM and Confluence settings
+```
+
+### 2️⃣ Start the Application
+```bash
+# Build all packages
+pnpm build
+
+# Start in development mode (recommended)
+pnpm dev
+
+# OR start production mode
+pnpm -F @app/mcp-server start  # Backend on :8787
+pnpm -F @app/web-ui preview    # Frontend on :4173
+```
+
+### 3️⃣ Access the Interface
+- **Web UI**: http://localhost:4173 (production) or http://localhost:5173 (dev)
+- **API Health**: http://localhost:8787/health
+- **Available Models**: http://localhost:8787/models
+
+## 💡 Usage Examples
+
+### Basic Question Answering
+```
+Q: "How do I set up our CI/CD pipeline?"
+A: Based on your Confluence documentation, here's how to set up the CI/CD pipeline... [with citations]
+```
+
+### Troubleshooting Queries  
+```
+Q: "Why is the authentication service failing?"
+A: The authentication service can fail for several reasons documented in your troubleshooting guide... [with citations]
+```
+
+### Configuration Help
+```
+Q: "What are the required environment variables for production?"
+A: According to the deployment documentation, the required environment variables are... [with citations]
+```
+
+## 🔧 API Reference
+
+### Core Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check and status |
+| `GET` | `/models` | List available LLM models |
+| `POST` | `/chat/completions` | OpenAI-compatible chat completions |
+| `POST` | `/rag/query` | Synchronous RAG query with citations |
+| `POST` | `/rag/stream` | Server-Sent Events RAG query |
+
+### Example RAG Query
+```bash
+curl -X POST http://localhost:8787/rag/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How do I deploy the application?",
+    "space": "DEV",
+    "topK": 5
+  }'
+```
+
+### Response Format
+```json
+{
+  "answer": "To deploy the application, follow these steps...",
+  "citations": [
+    {
+      "pageId": "12345",
+      "title": "Deployment Guide",
+      "url": "https://confluence.example.com/pages/12345",
+      "snippet": "Deployment process overview..."
+    }
+  ]
+}
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `MCP_PORT` | Server port | `8787` | No |
+| `MCP_HOST` | Server host | `127.0.0.1` | No |
+| `LLM_BASE_URL` | OpenAI-compatible LLM endpoint | - | Yes* |
+| `LLM_CHAT_MODEL` | Chat model identifier | - | Yes* |
+| `LLM_EMBED_MODEL` | Embedding model identifier | - | No |
+| `CONFLUENCE_BASE_URL` | Confluence server URL | - | No |
+| `CONFLUENCE_USERNAME` | Confluence username | - | No |
+| `CONFLUENCE_API_TOKEN` | Confluence API token | - | No |
+| `LANCEDB_PATH` | Vector database path | `./data/lancedb` | No |
+| `USE_REAL_VECTORDB` | Enable LanceDB | `true` | No |
+| `USE_SMART_PIPELINE` | Enable smart RAG pipeline | `true` | No |
+
+*Required for full functionality. Without LLM config, returns mock responses.
+
+### Example .env
+```bash
+# LLM Configuration (LM Studio)
+LLM_BASE_URL=http://127.0.0.1:1234
+LLM_CHAT_MODEL=microsoft/DialoGPT-medium
+
+# Confluence (Optional)
+CONFLUENCE_BASE_URL=https://your-company.atlassian.net
+CONFLUENCE_USERNAME=your-email@company.com
+CONFLUENCE_API_TOKEN=your-api-token
+
+# Server Configuration
+MCP_PORT=8787
+MCP_HOST=127.0.0.1
+```
+
+## 🛠️ Development Workflow
+
+### Available Scripts
+```bash
+# Development
+pnpm dev              # Start all services in development mode
+pnpm typecheck        # Run TypeScript checks across all packages
+pnpm lint             # Run ESLint for code quality
+pnpm lint:fix         # Auto-fix linting issues
+
+# Security & Quality  
+pnpm security:check   # Run security audits
+pnpm check            # Run all checks (typecheck + lint + security)
+
+# Building
+pnpm build            # Build all packages
+pnpm -F @app/mcp-server build  # Build specific package
+```
+
+### Air-Gapped Operations
+```bash
+# Preload models for offline use
+scripts/preload-models.sh
+
+# Import Confluence data without network access
+node tools/ingest-confluence.mjs --space DEV --maxPages 100 --server http://127.0.0.1:8787
+```
+
+## 🆘 Troubleshooting
+
+### Common Issues
+
+#### "No models available"
+- Ensure your LLM server (LM Studio/Ollama) is running
+- Check `LLM_BASE_URL` points to the correct endpoint
+- Verify the model is loaded in your LLM server
+
+#### "Connection refused" errors
+- Check if the MCP server is running on the correct port
+- Verify firewall settings aren't blocking the connection
+- Ensure `MCP_PORT` and `MCP_HOST` are configured correctly
+
+#### "No search results" or empty responses
+- Verify Confluence credentials are correct
+- Check if documents have been ingested: http://localhost:8787/health
+- Try using the ingestion tool to add documents manually
+
+#### Vector database issues  
+- Delete `./data/lancedb` to reset the vector store
+- Set `USE_REAL_VECTORDB=false` to use mock storage
+- Check disk permissions for the data directory
+
+### Getting Help
+
+1. **Check logs**: Server logs contain detailed error information
+2. **Health endpoint**: Visit `/health` to see system status
+3. **Mock mode**: Disable Confluence and LLM for basic UI testing
+4. **Issues**: Report bugs with logs and configuration details
+
+## 👥 Contributing
+
+### Development Setup
+1. Fork and clone the repository  
+2. Install dependencies: `pnpm install`
+3. Copy environment: `cp .env.example .env`
+4. Start development: `pnpm dev`
+
+### Code Quality
+- **Linting**: ESLint with TypeScript and security rules
+- **Security**: Automated vulnerability scanning
+- **Testing**: Run `pnpm check` before submitting PRs
+- **Documentation**: Update README for significant changes
+
+### Architecture Notes
+- **Type Safety**: Full TypeScript across all packages
+- **Security**: No data transmission outside your network
+- **Performance**: Streaming responses and vector similarity search
+- **Maintainability**: Clean separation between UI, API, and data layers
