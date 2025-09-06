@@ -311,7 +311,6 @@ function App() {
           <div className="header-content">
             <div className="header-title">
               <h1>Cabin</h1>
-              <span className="header-subtitle">Documentation assistant</span>
             </div>
             <div className="header-actions">
               <select
