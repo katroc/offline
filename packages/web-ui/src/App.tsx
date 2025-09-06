@@ -3,6 +3,7 @@ import type { RagQuery } from '@app/shared';
 import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
 import { HistoryPane, type HistoryConversation } from './components/HistoryPane';
+import { generateConversationTitle, shouldUpdateTitle } from './utils/titleSummarization';
 
 interface Message {
   id: string;
@@ -22,6 +23,7 @@ interface Conversation {
   createdAt: number;
   updatedAt: number;
   messages: Message[];
+  generatingTitle?: boolean;
 }
 
 function App() {
@@ -155,6 +157,15 @@ function App() {
     setActiveId(conv.id);
   };
 
+  const deleteConversation = (id: string) => {
+    setConversations(prev => prev.filter(c => c.id !== id));
+    // If we're deleting the active conversation, switch to the next one
+    if (activeId === id) {
+      const remaining = conversations.filter(c => c.id !== id);
+      setActiveId(remaining.length > 0 ? remaining[0].id : null);
+    }
+  };
+
   const current = conversations.find(c => c.id === activeId) || conversations[0];
   useEffect(() => {
     if (!activeId && conversations.length > 0) setActiveId(conversations[0].id);
@@ -230,6 +241,45 @@ function App() {
         conv.messages = [...conv.messages, assistantMessage];
         conv.updatedAt = Date.now();
         list[targetIdx] = conv;
+        
+        // Auto-generate title if appropriate
+        const firstUserMsg = conv.messages.find(m => m.type === 'user')?.content;
+        
+        if (shouldUpdateTitle(conv.title, conv.messages.length, firstUserMsg)) {
+          // Set loading state
+          setConversations(currentList => {
+            const updatedList = [...currentList];
+            const convIdx = updatedList.findIndex(c => c.id === conv.id);
+            if (convIdx >= 0) {
+              updatedList[convIdx] = { ...updatedList[convIdx], generatingTitle: true };
+            }
+            return updatedList;
+          });
+          
+          generateConversationTitle(conv.messages, selectedModel)
+            .then(newTitle => {
+              setConversations(currentList => {
+                const updatedList = [...currentList];
+                const convIdx = updatedList.findIndex(c => c.id === conv.id);
+                if (convIdx >= 0) {
+                  updatedList[convIdx] = { ...updatedList[convIdx], title: newTitle, generatingTitle: false };
+                }
+                return updatedList;
+              });
+            })
+            .catch(error => {
+              console.warn('Failed to update conversation title:', error);
+              setConversations(currentList => {
+                const updatedList = [...currentList];
+                const convIdx = updatedList.findIndex(c => c.id === conv.id);
+                if (convIdx >= 0) {
+                  updatedList[convIdx] = { ...updatedList[convIdx], generatingTitle: false };
+                }
+                return updatedList;
+              });
+            });
+        }
+        
         return list;
       });
     } catch (error) {
@@ -261,9 +311,6 @@ function App() {
           <div className="header-content">
             <div className="header-title">
               <h1>Cabin</h1>
-              <div className="model-info">
-                <span className="model-badge">Documentation Assistant</span>
-              </div>
             </div>
             <div className="header-actions">
               <select
@@ -298,11 +345,7 @@ function App() {
                   </svg>
                 )}
               </button>
-              <button className="header-button" title="New conversation" onClick={createConversation} aria-label="Start new conversation">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-              </button>
+              {/* New conversation button moved to HistoryPane header */}
             </div>
           </div>
           {(space || labels) && (
@@ -327,10 +370,16 @@ function App() {
 
         <div className="workarea">
           <HistoryPane
-            items={conversations.map<HistoryConversation>(c => ({ id: c.id, title: c.title || 'Untitled', updatedAt: c.updatedAt }))}
+            items={conversations.map<HistoryConversation>(c => ({ 
+              id: c.id, 
+              title: c.title || 'Untitled', 
+              updatedAt: c.updatedAt,
+              generatingTitle: c.generatingTitle
+            }))}
             activeId={current?.id || null}
             onSelect={(id) => setActiveId(id)}
             onNew={createConversation}
+            onDelete={deleteConversation}
           />
           <div className="main-pane">
             <div className="conversation">

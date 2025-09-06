@@ -101,49 +101,70 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
   const wrapCitationRefs = (node: any): any => {
     if (typeof node === 'string') {
       // Normalize duplicates like [1][1] or [1] 1 -> [1]
-      const normalized = node
+      let normalized = node
         .replace(/\[(\d+)\]\s*\[\1\]/g, '[$1]')
         .replace(/\[(\d+)\](\s*\1)(?!\d)/g, '[$1]');
 
       // Only consider bracketed numbers that aren't immediately followed by another digit
-      if (/(?<!\w)\[(\d+)\](?!\d)/.test(normalized)) {
-        const parts = normalized.split(/((?<!\w)\[(\d+)\](?!\d))/);
-        return parts.map((part, idx) => {
-          const match = part.match(/^\[(\d+)\]$/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            // Only render a pill if this number exists in the citations list
-            if (num > 0 && num <= citations.length) {
-              const title = citations[num - 1]?.title || `Source ${num}`;
-              const onKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  focusCitation(num);
-                }
-              };
-              return (
-                <span
-                  key={idx}
-                  className={`citation-ref${activeCitation === num ? ' active' : ''}`}
-                  data-cite={num}
-                  title={title}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`View source ${num}: ${title}`}
-                  onClick={() => focusCitation(num)}
-                  onKeyDown={onKeyDown}
-                  onMouseEnter={() => setActiveCitation(num)}
-                  onMouseLeave={() => setActiveCitation(null)}
-                >
-                  {match[1]}
-                </span>
-              );
+      if (/\[(\d+)\]/.test(normalized)) {
+        // Replace each [n] with citation pill
+        const result: any[] = [];
+        let lastIndex = 0;
+        const citationRegex = /\[(\d+)\]/g;
+        let match;
+
+        while ((match = citationRegex.exec(normalized)) !== null) {
+          const num = parseInt(match[1], 10);
+          
+          // Add any text before the citation
+          if (match.index > lastIndex) {
+            const beforeText = normalized.substring(lastIndex, match.index);
+            if (beforeText.trim() !== '') {
+              result.push(beforeText);
             }
-            // If invalid (e.g., [2] but only 1 source), drop it to avoid confusion
-            return null;
           }
-          return part;
-        });
+
+          // Only render a pill if this number exists in the citations list
+          if (num > 0 && num <= citations.length) {
+            const title = citations[num - 1]?.title || `Source ${num}`;
+            const onKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                focusCitation(num);
+              }
+            };
+            result.push(
+              <span
+                key={`cite-${num}-${match.index}`}
+                className={`citation-ref${activeCitation === num ? ' active' : ''}`}
+                data-cite={num}
+                title={title}
+                role="button"
+                tabIndex={0}
+                aria-label={`View source ${num}: ${title}`}
+                onClick={() => focusCitation(num)}
+                onKeyDown={onKeyDown}
+                onMouseEnter={() => setActiveCitation(num)}
+                onMouseLeave={() => setActiveCitation(null)}
+              >
+                {num}
+              </span>
+            );
+          }
+          // If invalid citation number, we skip it (don't add anything)
+
+          lastIndex = match.index + match[0].length;
+        }
+
+        // Add any remaining text after the last citation
+        if (lastIndex < normalized.length) {
+          const afterText = normalized.substring(lastIndex);
+          if (afterText.trim() !== '') {
+            result.push(afterText);
+          }
+        }
+
+        return result.length > 0 ? result : normalized;
       }
       return normalized;
     }
@@ -375,6 +396,18 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
                       <span className="link-icon"><Icon name="external-link" size={14} /></span>
                     </a>
                   ),
+                  
+                  // Enhanced table rendering
+                  table: ({ children }) => (
+                    <div className="table-wrapper">
+                      <table className="response-table">{children}</table>
+                    </div>
+                  ),
+                  thead: ({ children }) => <thead className="table-head">{children}</thead>,
+                  tbody: ({ children }) => <tbody className="table-body">{children}</tbody>,
+                  tr: ({ children }) => <tr className="table-row">{children}</tr>,
+                  th: ({ children }) => <th className="table-header">{processChildrenWithCitations(children)}</th>,
+                  td: ({ children }) => <td className="table-cell">{processChildrenWithCitations(children)}</td>,
                 }}
               >
                 {section.content}
