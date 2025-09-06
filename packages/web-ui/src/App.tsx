@@ -79,6 +79,7 @@ function App() {
   const [space, setSpace] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.space) || '' : ''));
   const [labels, setLabels] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.labels) || '' : ''));
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
     if (saved === 'light' || saved === 'dark') return saved;
@@ -91,6 +92,9 @@ function App() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [topK, setTopK] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:topK')) || 5 : 5));
+  const [temperature, setTemperature] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:temperature')) || 0.7 : 0.7));
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -163,6 +167,16 @@ function App() {
     if (typeof window === 'undefined') return;
     if (selectedModel) localStorage.setItem(STORAGE_KEYS.model, selectedModel);
   }, [selectedModel]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('settings:topK', String(topK));
+  }, [topK]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('settings:temperature', String(temperature));
+  }, [temperature]);
 
   // Check server health and connection status
   const checkHealth = async () => {
@@ -303,6 +317,15 @@ function App() {
     if (!activeId && conversations.length > 0) setActiveId(conversations[0].id);
   }, [activeId, conversations.length]);
 
+  // Focus input when switching conversations
+  useEffect(() => {
+    if (activeId) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [activeId]);
+
   const stopGeneration = () => {
     if (abortController) {
       abortController.abort();
@@ -348,7 +371,7 @@ function App() {
         question: input.trim(),
         space: space || undefined,
         labels: labels ? labels.split(',').map(l => l.trim()) : undefined,
-        topK: 5,
+        topK: topK,
         model: selectedModel || undefined
       };
 
@@ -475,6 +498,10 @@ function App() {
       setAbortController(null);
       setIsLoading(false);
       setInput('');
+      // Re-focus the input after submitting
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -497,18 +524,18 @@ function App() {
               )}
             </div>
             <div className="header-actions">
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="model-selector"
-                title="Select model"
+              <button
+                type="button"
+                className="header-button"
+                title="Settings"
+                onClick={() => setSettingsOpen(true)}
+                aria-label="Open settings"
               >
-                {availableModels.map(model => (
-                  <option key={model.id} value={model.id}>
-                    {model.id}
-                  </option>
-                ))}
-              </select>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.07a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
               <button
                 type="button"
                 className="header-button"
@@ -585,24 +612,6 @@ function App() {
               {/* New conversation button moved to HistoryPane header */}
             </div>
           </div>
-          {(space || labels) && (
-            <div className="filters">
-              <input
-                type="text"
-                placeholder="Filter by space (optional)"
-                value={space}
-                onChange={(e) => setSpace(e.target.value)}
-                className="filter-input"
-              />
-              <input
-                type="text"
-                placeholder="Filter by labels (comma-separated)"
-                value={labels}
-                onChange={(e) => setLabels(e.target.value)}
-                className="filter-input"
-              />
-            </div>
-          )}
         </header>
 
         <div className="workarea">
@@ -660,12 +669,14 @@ function App() {
 
             <form onSubmit={handleSubmit} className="input-area">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={!isOnline ? "Offline - check connection..." : "Ask a question..."}
             className="input-field"
             disabled={isLoading || !isOnline}
+            autoFocus
           />
           {isLoading ? (
             <button 
@@ -689,6 +700,126 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Settings Drawer */}
+      {settingsOpen && (
+        <div className="settings-overlay" onClick={() => {
+          setSettingsOpen(false);
+          setTimeout(() => inputRef.current?.focus(), 100);
+        }}>
+          <div className="settings-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-header">
+              <h2>Settings</h2>
+              <button
+                className="settings-close"
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setTimeout(() => inputRef.current?.focus(), 100);
+                }}
+                aria-label="Close settings"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            
+            <div className="settings-content">
+              <div className="settings-section">
+                <div className="setting-group">
+                  <label htmlFor="topK-setting">
+                    <span>Documents to retrieve (topK)</span>
+                    <span className="setting-description">Number of relevant documents to find</span>
+                  </label>
+                  <div className="range-input-group">
+                    <input
+                      id="topK-setting"
+                      type="range"
+                      min="1"
+                      max="20"
+                      value={topK}
+                      onChange={(e) => setTopK(Number(e.target.value))}
+                      className="range-input"
+                    />
+                    <span className="range-value">{topK}</span>
+                  </div>
+                </div>
+
+                <div className="setting-group">
+                  <label htmlFor="space-setting">
+                    <span>Space filter</span>
+                    <span className="setting-description">Limit search to specific Confluence space</span>
+                  </label>
+                  <input
+                    id="space-setting"
+                    type="text"
+                    placeholder="e.g., DOCS, TECH, PROD"
+                    value={space}
+                    onChange={(e) => setSpace(e.target.value)}
+                    className="text-input"
+                  />
+                </div>
+
+                <div className="setting-group">
+                  <label htmlFor="labels-setting">
+                    <span>Labels filter</span>
+                    <span className="setting-description">Comma-separated labels to filter by</span>
+                  </label>
+                  <input
+                    id="labels-setting"
+                    type="text"
+                    placeholder="e.g., api, guide, tutorial"
+                    value={labels}
+                    onChange={(e) => setLabels(e.target.value)}
+                    className="text-input"
+                  />
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <div className="setting-group">
+                  <label htmlFor="model-setting">
+                    <span>Model</span>
+                    <span className="setting-description">Choose the language model to use</span>
+                  </label>
+                  <select
+                    id="model-setting"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="select-input"
+                  >
+                    {availableModels.map(model => (
+                      <option key={model.id} value={model.id}>
+                        {model.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="setting-group">
+                  <label htmlFor="temperature-setting">
+                    <span>Temperature</span>
+                    <span className="setting-description">Controls creativity vs consistency (0.0 = focused, 1.0 = creative)</span>
+                  </label>
+                  <div className="range-input-group">
+                    <input
+                      id="temperature-setting"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={temperature}
+                      onChange={(e) => setTemperature(Number(e.target.value))}
+                      className="range-input"
+                    />
+                    <span className="range-value">{temperature.toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

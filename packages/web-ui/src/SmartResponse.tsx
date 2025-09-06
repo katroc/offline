@@ -345,6 +345,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
     }
   };
 
+
   const queryType = detectQueryType(query);
   const sections = parseResponse(displayedAnswer, queryType);
   const referencedCitations = getReferencedCitations(displayedAnswer, citations);
