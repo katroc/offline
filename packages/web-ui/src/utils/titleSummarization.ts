@@ -69,7 +69,7 @@ Create a short title that summarizes this conversation.
     const requestBody = {
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.5,
-      max_tokens: 40,
+      max_tokens: 100,
       ...(model && model.trim() && { model: model }), // Only include model if it's not empty
     };
     
@@ -86,9 +86,24 @@ Create a short title that summarizes this conversation.
     }
 
     const result = await response.json();
-    const raw = result.choices?.[0]?.message?.content ?? '';
-    const title = normalizeTitle(raw);
-    if (title) return title;
+
+    // Try multiple common provider fields for the title content
+    const candidates: Array<unknown> = [
+      result?.choices?.[0]?.message?.content,
+      // Some providers put suggested output in a non-standard reasoning field
+      result?.choices?.[0]?.message?.reasoning,
+      // OpenAI text completion–style
+      result?.choices?.[0]?.text,
+      // Other compatibility layers
+      result?.output_text,
+    ];
+
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) {
+        const title = normalizeTitle(c);
+        if (title) return title;
+      }
+    }
 
     // Fallback to first message if AI generation is empty
     return smartTrim(messages[0].content, 60);
