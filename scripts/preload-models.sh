@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Ollama Model Preloading Script for Air-Gapped Deployment
+# Ollama Model Preloading Script for Cabin Deployment
 # This script downloads and caches the required models for offline operation
 
 set -euo pipefail
@@ -90,7 +90,7 @@ main() {
     ollama list
     
     echo
-    echo "💡 For air-gapped deployment:"
+    echo "💡 For Cabin deployment:"
     echo "   1. Export models: ollama export $CHAT_MODEL > $CHAT_MODEL.tar"
     echo "   2. Import on target: ollama import $CHAT_MODEL < $CHAT_MODEL.tar"
 }
