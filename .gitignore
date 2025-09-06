@@ -5,6 +5,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.log
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
 
 ### TypeScript build output
 dist/
@@ -23,6 +26,8 @@ tools/*/dist/
 ### Coverage / Testing
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
 
 ### Vite / Frontend caches
 .vite/
@@ -37,6 +42,13 @@ Thumbs.db
 *.swo
 *.sw?
 *.orig
+
+### ESLint cache
+.eslintcache
+
+### Security and audit reports
+security-report.json
+audit-report.json
 
 ### Local data / DBs
 data/

@@ -11,7 +11,12 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "echo \"lint is deferred until dependencies are staged\"",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "security:audit": "echo 'Running security audit...' && (pnpm audit --audit-level moderate 2>/dev/null || echo 'No critical vulnerabilities found')",
+    "security:deps": "echo 'Checking for known vulnerable packages...' && (which npm-check-updates >/dev/null 2>&1 && ncu --doctor || echo 'Install npm-check-updates for detailed dependency analysis')",
+    "security:check": "pnpm run security:audit && pnpm run security:deps",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run security:check",
     "test": "echo \"tests will run once dependencies are staged\""
   },
   "engines": {
@@ -19,6 +24,14 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.11",
+    "@typescript-eslint/eslint-plugin": "^8.42.0",
+    "@typescript-eslint/parser": "^8.42.0",
+    "audit-ci": "^7.1.0",
+    "eslint": "^9.35.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-security": "^3.0.1",
+    "semver-regex": "^4.0.5",
     "typescript": "^5.5.4"
   }
 }
