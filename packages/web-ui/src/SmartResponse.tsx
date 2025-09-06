@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import { Icon } from './components/Icon';
+import { Tooltip } from './components/Tooltip';
 
 // Small helper for copy-to-clipboard with inline feedback
 const CopyButton: React.FC<{ text: string }> = ({ text }) => {
@@ -39,12 +40,14 @@ interface Citation {
   title: string;
   url: string;
   sectionAnchor?: string;
+  snippet?: string;
 }
 
 interface SmartResponseProps {
   answer: string;
   citations: Citation[];
   query: string;
+  animate?: boolean;
 }
 
 type QueryType = 'factual' | 'howto' | 'troubleshooting' | 'comparison' | 'general';
@@ -55,10 +58,12 @@ interface ResponseSection {
   icon?: string;
 }
 
-export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations, query }) => {
+export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations, query, animate = false }) => {
   const [activeCitation, setActiveCitation] = React.useState<number | null>(null);
   const hoverTimeoutRef = React.useRef<number | null>(null);
   const citationRefs = React.useRef<Record<number, HTMLDivElement | null>>({});
+  const [displayedAnswer, setDisplayedAnswer] = React.useState(animate ? '' : answer);
+  const [isAnimating, setIsAnimating] = React.useState(animate);
 
   const clearHoverTimeout = () => {
     if (hoverTimeoutRef.current) {
@@ -66,6 +71,37 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
       hoverTimeoutRef.current = null;
     }
   };
+
+  // Animation effect
+  React.useEffect(() => {
+    if (!animate || !answer) {
+      setDisplayedAnswer(answer);
+      setIsAnimating(false);
+      return;
+    }
+
+    setDisplayedAnswer('');
+    setIsAnimating(true);
+    
+    let currentIndex = 0;
+    const speed = 30; // milliseconds per chunk
+    const chunkSize = 8; // characters per chunk
+    
+    const interval = setInterval(() => {
+      if (currentIndex >= answer.length) {
+        setDisplayedAnswer(answer);
+        setIsAnimating(false);
+        clearInterval(interval);
+        return;
+      }
+
+      // Reveal text in chunks
+      currentIndex = Math.min(currentIndex + chunkSize, answer.length);
+      setDisplayedAnswer(answer.slice(0, currentIndex));
+    }, speed);
+
+    return () => clearInterval(interval);
+  }, [answer, animate]);
 
   const focusCitation = (num: number) => {
     const el = citationRefs.current[num];
@@ -126,7 +162,9 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
 
           // Only render a pill if this number exists in the citations list
           if (num > 0 && num <= citations.length) {
-            const title = citations[num - 1]?.title || `Source ${num}`;
+            const citation = citations[num - 1];
+            const title = citation?.title || `Source ${num}`;
+            const snippet = citation?.snippet || '';
             const onKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -134,21 +172,22 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
               }
             };
             result.push(
-              <span
-                key={`cite-${num}-${match.index}`}
-                className={`citation-ref${activeCitation === num ? ' active' : ''}`}
-                data-cite={num}
-                title={title}
-                role="button"
-                tabIndex={0}
-                aria-label={`View source ${num}: ${title}`}
-                onClick={() => focusCitation(num)}
-                onKeyDown={onKeyDown}
-                onMouseEnter={() => setActiveCitation(num)}
-                onMouseLeave={() => setActiveCitation(null)}
-              >
-                {num}
-              </span>
+              <Tooltip key={`cite-${num}-${match.index}`} content={snippet}>
+                <span
+                  className={`citation-ref${activeCitation === num ? ' active' : ''}`}
+                  data-cite={num}
+                  title={title}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View source ${num}: ${title}`}
+                  onClick={() => focusCitation(num)}
+                  onKeyDown={onKeyDown}
+                  onMouseEnter={() => setActiveCitation(num)}
+                  onMouseLeave={() => setActiveCitation(null)}
+                >
+                  {num}
+                </span>
+              </Tooltip>
             );
           }
           // If invalid citation number, we skip it (don't add anything)
@@ -168,10 +207,10 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
       }
       return normalized;
     }
-    if (React.isValidElement(node) && node.props && node.props.children) {
+    if (React.isValidElement(node) && (node.props as any)?.children) {
       return React.cloneElement(node, {
-        children: React.Children.map(node.props.children, wrapCitationRefs)
-      });
+        children: React.Children.map((node.props as any).children, wrapCitationRefs)
+      } as any);
     }
     return node;
   };
@@ -182,8 +221,8 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
     const out: any[] = [];
     let lastCite: number | null = null;
     for (const n of nodes) {
-      if (React.isValidElement(n) && n.props?.className === 'citation-ref') {
-        const t = Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '');
+      if (React.isValidElement(n) && (n.props as any)?.className === 'citation-ref') {
+        const t = Array.isArray((n.props as any).children) ? (n.props as any).children.join('') : String((n.props as any).children ?? '');
         const num = parseInt(t, 10);
         if (!Number.isNaN(num)) {
           lastCite = num;
@@ -307,8 +346,8 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
   };
 
   const queryType = detectQueryType(query);
-  const sections = parseResponse(answer, queryType);
-  const referencedCitations = getReferencedCitations(answer, citations);
+  const sections = parseResponse(displayedAnswer, queryType);
+  const referencedCitations = getReferencedCitations(displayedAnswer, citations);
   const showAllCitations = referencedCitations.length === 0 && citations.length > 0;
 
   return (
@@ -345,7 +384,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
                 rehypePlugins={[rehypeHighlight, rehypeRaw]}
                 components={{
                   // Custom rendering for different elements
-                  code: ({ node, inline, className, children, ...props }) => {
+                  code: ({ node, inline, className, children, ...props }: any) => {
                     const match = /language-(\w+)/.exec(className || '');
                     const lang = match ? match[1] : '';
                     
@@ -412,6 +451,9 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
               >
                 {section.content}
               </ReactMarkdown>
+              {isAnimating && index === sections.length - 1 && (
+                <span className="typewriter-cursor">▊</span>
+              )}
             </div>
           </div>
         ))}
@@ -436,18 +478,20 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
                   id={`source-${displayNumber}`}
                 >
                   <span className="citation-number">{displayNumber}</span>
-                  <a 
-                    href={citation.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="citation-link"
-                    title={`Open ${citation.title} in new tab`}
-                  >
-                    <span className="citation-title">{citation.title}</span>
-                    {citation.sectionAnchor && (
-                      <span className="citation-section">#{citation.sectionAnchor}</span>
-                    )}
-                  </a>
+                  <Tooltip content={citation.snippet || ''}>
+                    <a 
+                      href={citation.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="citation-link"
+                      title={`Open ${citation.title} in new tab`}
+                    >
+                      <span className="citation-title">{citation.title}</span>
+                      {citation.sectionAnchor && (
+                        <span className="citation-section">#{citation.sectionAnchor}</span>
+                      )}
+                    </a>
+                  </Tooltip>
                 </div>
               );
             })}

@@ -14,6 +14,7 @@ interface Message {
     title: string;
     url: string;
     sectionAnchor?: string;
+    snippet?: string;
   }>;
 }
 
@@ -24,6 +25,7 @@ interface Conversation {
   updatedAt: number;
   messages: Message[];
   generatingTitle?: boolean;
+  pinned?: boolean;
 }
 
 function App() {
@@ -71,7 +73,9 @@ function App() {
     return localStorage.getItem(STORAGE_KEYS.activeId) || (null as string | null);
   });
   const [input, setInput] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.draft) || '' : ''));
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [animatingMessageId, setAnimatingMessageId] = useState<string | null>(null);
   const [space, setSpace] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.space) || '' : ''));
   const [labels, setLabels] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.labels) || '' : ''));
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -83,6 +87,10 @@ function App() {
   });
   const [selectedModel, setSelectedModel] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.model) || '' : ''));
   const [availableModels, setAvailableModels] = useState<Array<{id: string, object: string}>>([]);
+  const [isOnline, setIsOnline] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -91,6 +99,32 @@ function App() {
   useEffect(() => {
     scrollToBottom();
   }, [conversations, activeId]);
+
+  // Clear animation state after animation completes
+  useEffect(() => {
+    if (animatingMessageId) {
+      // Clear animation after a delay longer than the animation duration
+      const timeout = setTimeout(() => {
+        setAnimatingMessageId(null);
+      }, 5000); // Generous timeout for long messages
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [animatingMessageId]);
+
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setExportDropdownOpen(false);
+      }
+    };
+
+    if (exportDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [exportDropdownOpen]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -130,9 +164,32 @@ function App() {
     if (selectedModel) localStorage.setItem(STORAGE_KEYS.model, selectedModel);
   }, [selectedModel]);
 
-  // Fetch available models on mount
+  // Check server health and connection status
+  const checkHealth = async () => {
+    try {
+      const response = await fetch('/health', { cache: 'no-cache' });
+      if (response.ok) {
+        setIsOnline(true);
+        setConnectionError(null);
+        return true;
+      } else {
+        setIsOnline(false);
+        setConnectionError(`Server error: ${response.status}`);
+        return false;
+      }
+    } catch (error) {
+      setIsOnline(false);
+      setConnectionError(error instanceof Error ? error.message : 'Connection failed');
+      return false;
+    }
+  };
+
+  // Fetch available models on mount and periodically check health
   useEffect(() => {
     const fetchModels = async () => {
+      const isHealthy = await checkHealth();
+      if (!isHealthy) return;
+
       try {
         const response = await fetch('/models');
         if (response.ok) {
@@ -147,7 +204,12 @@ function App() {
         console.error('Failed to fetch models:', error);
       }
     };
+
     fetchModels();
+
+    // Check health every 30 seconds
+    const healthInterval = setInterval(checkHealth, 30000);
+    return () => clearInterval(healthInterval);
   }, [selectedModel]);
 
   const createConversation = () => {
@@ -166,14 +228,95 @@ function App() {
     }
   };
 
+  const renameConversation = (id: string, newTitle: string) => {
+    setConversations(prev => prev.map(c => 
+      c.id === id ? { ...c, title: newTitle, updatedAt: Date.now() } : c
+    ));
+  };
+
+  const togglePinConversation = (id: string) => {
+    setConversations(prev => prev.map(c => 
+      c.id === id ? { ...c, pinned: !c.pinned, updatedAt: Date.now() } : c
+    ));
+  };
+
+  const exportConversation = (format: 'markdown' | 'json') => {
+    if (!current) return;
+
+    const timestamp = new Date(current.updatedAt).toLocaleString();
+    let content: string;
+    let filename: string;
+    let mimeType: string;
+
+    if (format === 'markdown') {
+      content = `# ${current.title}\n\n*Exported: ${timestamp}*\n\n`;
+      
+      current.messages.forEach(msg => {
+        if (msg.type === 'user') {
+          content += `## User\n\n${msg.content}\n\n`;
+        } else {
+          content += `## Assistant\n\n${msg.content}\n\n`;
+          if (msg.citations && msg.citations.length > 0) {
+            content += `### Sources\n\n`;
+            msg.citations.forEach((citation, idx) => {
+              content += `${idx + 1}. [${citation.title}](${citation.url})\n`;
+            });
+            content += '\n';
+          }
+        }
+      });
+
+      filename = `${current.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')}.md`;
+      mimeType = 'text/markdown';
+    } else {
+      content = JSON.stringify({
+        id: current.id,
+        title: current.title,
+        createdAt: current.createdAt,
+        updatedAt: current.updatedAt,
+        exportedAt: Date.now(),
+        messages: current.messages.map(msg => ({
+          id: msg.id,
+          type: msg.type,
+          content: msg.content,
+          citations: msg.citations || []
+        }))
+      }, null, 2);
+
+      filename = `${current.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')}.json`;
+      mimeType = 'application/json';
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const current = conversations.find(c => c.id === activeId) || conversations[0];
   useEffect(() => {
     if (!activeId && conversations.length > 0) setActiveId(conversations[0].id);
   }, [activeId, conversations.length]);
 
+  const stopGeneration = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
+
+    const controller = new AbortController();
+    setAbortController(controller);
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -198,6 +341,8 @@ function App() {
     });
     setIsLoading(true);
 
+    const assistantMessageId = (Date.now() + 1).toString();
+
     try {
       const query: RagQuery = {
         question: input.trim(),
@@ -213,10 +358,21 @@ function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(query),
+        signal: controller.signal
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // Fall back to status text if JSON parsing fails
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       const result: { answer: string; citations: Array<{
@@ -224,10 +380,11 @@ function App() {
         title: string;
         url: string;
         sectionAnchor?: string;
+        snippet?: string;
       }> } = await response.json();
 
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: assistantMessageId,
         type: 'assistant',
         content: result.answer,
         citations: result.citations
@@ -241,12 +398,22 @@ function App() {
         conv.messages = [...conv.messages, assistantMessage];
         conv.updatedAt = Date.now();
         list[targetIdx] = conv;
+        return list;
+      });
+
+      // Trigger animation for the new message
+      setAnimatingMessageId(assistantMessageId);
+
+      // Title generation after streaming completes
+      setConversations(prev => {
+        const list = [...prev];
+        const idx = list.findIndex(c => c.id === (current?.id || activeId));
+        const targetIdx = idx >= 0 ? idx : 0;
+        const conv = { ...list[targetIdx] } as Conversation;
         
-        // Auto-generate title if appropriate
         const firstUserMsg = conv.messages.find(m => m.type === 'user')?.content;
         
         if (shouldUpdateTitle(conv.title, conv.messages.length, firstUserMsg)) {
-          // Set loading state
           setConversations(currentList => {
             const updatedList = [...currentList];
             const convIdx = updatedList.findIndex(c => c.id === conv.id);
@@ -282,7 +449,13 @@ function App() {
         
         return list;
       });
+
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Request was aborted
+        return;
+      }
+      
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
@@ -299,6 +472,7 @@ function App() {
         return list;
       });
     } finally {
+      setAbortController(null);
       setIsLoading(false);
       setInput('');
     }
@@ -311,6 +485,16 @@ function App() {
           <div className="header-content">
             <div className="header-title">
               <h1>Cabin</h1>
+              {!isOnline && (
+                <div className="connection-status offline" title={`Offline: ${connectionError}`}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 14V2"/>
+                    <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.53l2.5-8A2 2 0 0 1 6.66 2H17"/>
+                    <path d="M13 8h8"/>
+                  </svg>
+                  <span>Offline</span>
+                </div>
+              )}
             </div>
             <div className="header-actions">
               <select
@@ -345,6 +529,59 @@ function App() {
                   </svg>
                 )}
               </button>
+              {current && current.messages.length > 0 && (
+                <div className="export-dropdown" ref={exportDropdownRef}>
+                  <button
+                    className="header-button"
+                    onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                    title="Export conversation"
+                    aria-label="Export conversation"
+                    aria-expanded={exportDropdownOpen}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7,10 12,15 17,10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden style={{ marginLeft: '4px' }}>
+                      <polyline points="6,9 12,15 18,9"/>
+                    </svg>
+                  </button>
+                  {exportDropdownOpen && (
+                    <div className="export-dropdown-menu">
+                      <button
+                        className="export-option"
+                        onClick={() => {
+                          exportConversation('markdown');
+                          setExportDropdownOpen(false);
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14,2 14,8 20,8"/>
+                        </svg>
+                        Export as Markdown
+                      </button>
+                      <button
+                        className="export-option"
+                        onClick={() => {
+                          exportConversation('json');
+                          setExportDropdownOpen(false);
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14,2 14,8 20,8"/>
+                          <line x1="16" y1="13" x2="8" y2="13"/>
+                          <line x1="16" y1="17" x2="8" y2="17"/>
+                          <polyline points="10,9 9,9 8,9"/>
+                        </svg>
+                        Export as JSON
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* New conversation button moved to HistoryPane header */}
             </div>
           </div>
@@ -374,12 +611,16 @@ function App() {
               id: c.id, 
               title: c.title || 'Untitled', 
               updatedAt: c.updatedAt,
-              generatingTitle: c.generatingTitle
+              generatingTitle: c.generatingTitle,
+              pinned: c.pinned,
+              messages: c.messages
             }))}
             activeId={current?.id || null}
             onSelect={(id) => setActiveId(id)}
             onNew={createConversation}
             onDelete={deleteConversation}
+            onRename={renameConversation}
+            onTogglePin={togglePinConversation}
           />
           <div className="main-pane">
             <div className="conversation">
@@ -396,6 +637,7 @@ function App() {
                   answer={message.content}
                   citations={message.citations || []}
                   query={index > 0 ? (current?.messages[index - 1]?.content || '') : ''}
+                  animate={animatingMessageId === message.id}
                 />
               )}
             </div>
@@ -421,17 +663,28 @@ function App() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question..."
+            placeholder={!isOnline ? "Offline - check connection..." : "Ask a question..."}
             className="input-field"
-            disabled={isLoading}
+            disabled={isLoading || !isOnline}
           />
-          <button 
-            type="submit" 
-            className="send-button"
-            disabled={!input.trim() || isLoading}
-          >
-            Send
-          </button>
+          {isLoading ? (
+            <button 
+              type="button" 
+              className="stop-button"
+              onClick={stopGeneration}
+            >
+              Stop
+            </button>
+          ) : (
+            <button 
+              type="submit" 
+              className="send-button"
+              disabled={!input.trim() || !isOnline}
+              title={!isOnline ? "Cannot send while offline" : undefined}
+            >
+              Send
+            </button>
+          )}
             </form>
           </div>
         </div>

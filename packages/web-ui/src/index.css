@@ -204,7 +204,7 @@ body {
   border-color: var(--accent); 
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 12%, transparent);
 }
-.history-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.history-list { display: flex; flex-direction: column; gap: var(--space-3); }
 .history-empty { color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-3); text-align: center; }
 
 .history-item { 
@@ -401,11 +401,16 @@ body {
 }
 
 .header-title h1 {
-  font-size: var(--text-lg);
-  font-weight: 600;
+  font-size: var(--text-2xl);
+  font-weight: 700;
   color: var(--text-primary);
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Roboto', sans-serif;
+  background: linear-gradient(135deg, var(--accent) 0%, color-mix(in oklab, var(--accent) 70%, var(--text-primary)) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 /* (subtitle removed) */
@@ -535,6 +540,45 @@ body {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--border-light);
+}
+
+/* Export dropdown styles */
+.export-dropdown {
+  position: relative;
+}
+
+.export-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  width: max-content;
+  z-index: 1000;
+  padding: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.export-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  text-align: left;
+}
+
+.export-option:hover {
+  background: var(--bg-hover);
 }
 
 .conversation {
@@ -881,6 +925,28 @@ body {
   opacity: 0.6;
 }
 
+.stop-button {
+  height: var(--composer-height);
+  padding: 0 var(--space-4);
+  background: var(--error);
+  color: white;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: all 0.2s ease;
+  min-width: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 12px color-mix(in oklab, var(--error) 18%, transparent);
+}
+
+.stop-button:hover {
+  filter: brightness(1.03);
+}
+
 /* Focus visibility for interactive elements */
 .header-button:focus-visible,
 .send-button:focus-visible,
@@ -888,6 +954,230 @@ body {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+
+.stop-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--error) 25%, transparent);
+}
+
+/* Inline rename form */
+.item-rename-form {
+  flex: 1;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.item-rename-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 15%, transparent);
+}
+
+.item-rename-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+
+/* Pin indicator */
+.pin-indicator {
+  margin-right: var(--space-2);
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Item actions container */
+.item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+/* Pin button styles */
+.item-pin {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.item-pin:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent);
+}
+
+.history-item .item-pin {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.history-item:hover .item-pin,
+.history-item .item-pin:focus-visible {
+  opacity: 1;
+}
+
+/* Show pin button for pinned items - use .pinned class instead */
+.history-item .item-pin.pinned {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.history-item:hover .item-pin.pinned,
+.history-item .item-pin.pinned:focus-visible {
+  opacity: 1;
+  background: var(--accent-subtle);
+}
+
+/* History search */
+.history-search {
+  margin: var(--space-3) 0 var(--space-2);
+  position: relative;
+}
+
+.search-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  padding-right: var(--space-8); /* Space for clear button */
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 15%, transparent);
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-clear {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.search-clear:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Export buttons */
+.export-buttons {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-left: var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--border-light);
+}
+
+/* Connection status */
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.connection-status.offline {
+  background: color-mix(in oklab, var(--error) 10%, transparent);
+  color: var(--error);
+  border: 1px solid color-mix(in oklab, var(--error) 20%, transparent);
+}
+
+.connection-status svg {
+  opacity: 0.8;
+}
+
+/* Tooltip styles */
+.tooltip-trigger {
+  display: inline-block;
+}
+
+.tooltip-content {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  max-width: 300px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  z-index: 1000;
+  animation: tooltip-appear 0.15s ease-out;
+}
+
+@keyframes tooltip-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark theme tooltip */
+:root[data-theme="dark"] .tooltip-content {
+  background: var(--bg-tertiary);
+  border-color: var(--border-faint);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+/* Typewriter cursor */
+.typewriter-cursor {
+  display: inline-block;
+  color: var(--accent);
+  font-weight: 400;
+  margin-left: 2px;
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 
 .filters {
