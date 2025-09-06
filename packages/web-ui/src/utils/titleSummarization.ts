@@ -7,6 +7,35 @@ interface Message {
 /**
  * Generate a concise, meaningful title for a conversation based on its messages
  */
+// Smart trim a string without cutting words; adds ellipsis when trimmed
+function smartTrim(input: string, maxChars: number): string {
+  const clean = input.replace(/\s+/g, ' ').trim();
+  if (clean.length <= maxChars) return clean;
+  const slice = clean.slice(0, maxChars + 1);
+  const lastSpace = slice.lastIndexOf(' ');
+  const trimmed = lastSpace > 0 ? slice.slice(0, lastSpace) : clean.slice(0, maxChars);
+  return trimmed.replace(/[\s,;:.-]+$/, '') + '…';
+}
+
+function normalizeTitle(title: string, maxChars = 80): string {
+  let t = title
+    .replace(/^<\|start\|>|<\|end\|>$/g, '')
+    .replace(/^["']|["']$/g, '')
+    .replace(/^Title:\s*/i, '')
+    .replace(/^Here'?s.*?:\s*/i, '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!t) return '';
+  // Keep it succinct by words first
+  const words = t.split(' ');
+  if (words.length > 12) {
+    t = words.slice(0, 12).join(' ');
+  }
+  // Final guard by characters with smart trimming
+  return smartTrim(t, maxChars);
+}
+
 export async function generateConversationTitle(messages: Message[], model?: string): Promise<string> {
   if (!messages || messages.length === 0) {
     return 'New conversation';
@@ -32,12 +61,15 @@ export async function generateConversationTitle(messages: Message[], model?: str
 Conversation:
 ${conversationContext}
 
-Create a short title (3-6 words) that summarizes this conversation. Respond with only the title, no special tokens or formatting:`;
+Create a short title that summarizes this conversation.
+- Length: 3–8 words and under 80 characters
+- No punctuation at the end
+- Respond with only the title (no quotes, no prefixes)`;
 
     const requestBody = {
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7, // Increase temperature for more creative responses
-      max_tokens: 50,   // Increase token limit to give more room
+      temperature: 0.5,
+      max_tokens: 40,
       ...(model && model.trim() && { model: model }), // Only include model if it's not empty
     };
     
@@ -54,30 +86,17 @@ Create a short title (3-6 words) that summarizes this conversation. Respond with
     }
 
     const result = await response.json();
-    let title = result.choices?.[0]?.message?.content?.trim();
-    
-    if (title && title.length > 0) {
-      // Clean up model-specific tokens and formatting
-      title = title
-        .replace(/^<\|start\|>|<\|end\|>$/g, '') // Remove model tokens
-        .replace(/^["']|["']$/g, '') // Remove surrounding quotes
-        .replace(/\.$/, '') // Remove trailing period
-        .replace(/^Title:\s*/i, '') // Remove "Title:" prefix
-        .replace(/^Here's.*?:\s*/i, '') // Remove "Here's a title:" type prefixes
-        .trim();
-      
-      if (title && title.length > 0 && title.length <= 100) {
-        return title;
-      }
-    }
-    
-    // Fallback to first message if AI generation fails
-    return messages[0].content.trim().slice(0, 50) + (messages[0].content.length > 50 ? '...' : '');
+    const raw = result.choices?.[0]?.message?.content ?? '';
+    const title = normalizeTitle(raw);
+    if (title) return title;
+
+    // Fallback to first message if AI generation is empty
+    return smartTrim(messages[0].content, 60);
     
   } catch (error) {
     console.warn('Failed to generate conversation title:', error);
     // Fallback to first message
-    return messages[0].content.trim().slice(0, 50) + (messages[0].content.length > 50 ? '...' : '');
+    return smartTrim(messages[0].content, 60);
   }
 }
 
