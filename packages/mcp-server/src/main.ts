@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import { generateRequestId, logRequestStart, logRequestEnd, logError } from './logger.js';
 import { validateRagQuery } from './validation.js';
 import { ragQuery, syncConfluence, ingestDocuments, mapConfluenceApiPagesToDocuments } from './orchestrator.js';
+import { chatCompletion, type ChatMessage } from './llm/chat.js';
 
 const port = Number(process.env.MCP_PORT || 8787);
 const host = String(process.env.MCP_HOST || '127.0.0.1');
@@ -44,6 +45,48 @@ app.get('/models', async (req, reply) => {
     const reqId = (req as any).reqId as string | undefined;
     logError({ reqId, method: req.method, url: req.url, err });
     return reply.code(502).send({ error: 'LM Studio not available' });
+  }
+});
+
+// Chat completions (for title generation and other direct LLM calls)
+app.post('/chat/completions', async (req, reply) => {
+  try {
+    const body = req.body as any;
+    const messages: ChatMessage[] = body.messages || [];
+    const temperature = body.temperature ?? 0.7;
+    const maxTokens = body.max_tokens ?? 512;
+    const model = body.model;
+    
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return reply.code(400).send({ error: 'messages array is required' });
+    }
+    
+    const content = await chatCompletion(messages, {
+      temperature,
+      maxTokens,
+      model,
+    });
+    
+    // Return in OpenAI-compatible format
+    return reply.send({
+      choices: [{
+        message: {
+          role: 'assistant',
+          content
+        },
+        finish_reason: 'stop',
+        index: 0
+      }],
+      usage: {
+        prompt_tokens: 0, // Not tracked
+        completion_tokens: 0, // Not tracked
+        total_tokens: 0
+      }
+    });
+  } catch (err) {
+    const reqId = (req as any).reqId as string | undefined;
+    logError({ reqId, method: req.method, url: req.url, err });
+    return reply.code(500).send({ error: err instanceof Error ? err.message : 'chat completion failed' });
   }
 });
 
@@ -110,7 +153,7 @@ app.post('/admin/ingest', async (req, reply) => {
   }
 });
 
-// Default route
+// Default route (must be last!)
 app.all('/*', async (req) => ({ name: 'mcp-server', message: 'scaffold running', path: req.url, method: req.method }));
 
 app.listen({ port, host }).then(() => {
