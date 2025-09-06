@@ -44,6 +44,8 @@ data/
 *.db
 *.db-shm
 *.db-wal
+bugger.db-shm
+bugger.db-wal
 
 ### Misc
 logs/

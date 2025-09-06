@@ -1,4 +1,10 @@
 # Infra
 
-Deployment notes, systemd/unit files, and air-gapped packaging steps will live here.
+Deployment notes, unit files, and packaging steps for Cabin.
 
+Planned contents
+- Systemd service examples for MCP server
+- Vite build + static hosting recipe for Web UI
+- Air‑gapped bundle: model export/import (Ollama), prebuilt `dist/`, and LanceDB data directory layout
+- Logging and rotation guidance
+- Minimal hardening checklist and env/secret management

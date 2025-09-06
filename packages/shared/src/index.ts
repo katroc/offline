@@ -27,6 +27,7 @@ export interface Citation {
   title: string;
   url: string;
   sectionAnchor?: string;
+  snippet?: string;
 }
 
 export interface RagQuery {

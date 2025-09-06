@@ -2,7 +2,7 @@ import './env.js';
 import Fastify from 'fastify';
 import { generateRequestId, logRequestStart, logRequestEnd, logError } from './logger.js';
 import { validateRagQuery } from './validation.js';
-import { ragQuery, syncConfluence, ingestDocuments, mapConfluenceApiPagesToDocuments } from './orchestrator.js';
+import { ragQuery, ragQueryStream, syncConfluence, ingestDocuments, mapConfluenceApiPagesToDocuments } from './orchestrator.js';
 import { chatCompletion, type ChatMessage } from './llm/chat.js';
 
 const port = Number(process.env.MCP_PORT || 8787);
@@ -100,6 +100,52 @@ app.post('/rag/query', async (req, reply) => {
     const { question, space, labels, updatedAfter, topK, model } = result.value;
     const rag = await ragQuery({ question, space, labels, updatedAfter, topK, model });
     return reply.send({ ...rag, meta: { request: { space, labels, updatedAfter, topK, model } } });
+  } catch (err) {
+    const reqId = (req as any).reqId as string | undefined;
+    logError({ reqId, method: req.method, url: req.url, err });
+    return reply.code(400).send({ error: 'invalid JSON body' });
+  }
+});
+
+// RAG streaming query (Server-Sent Events)
+app.post('/rag/stream', async (req, reply) => {
+  try {
+    const result = validateRagQuery(req.body as unknown);
+    if (!result.ok) {
+      return reply.code(400).send({ error: result.error });
+    }
+    
+    // Set SSE headers
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+    
+    const { question, space, labels, updatedAfter, topK, model } = result.value;
+    
+    // Stream from the real RAG pipeline
+    for await (const chunk of ragQueryStream({ question, space, labels, updatedAfter, topK, model })) {
+      if (chunk.type === 'citations') {
+        reply.raw.write(`data: ${JSON.stringify({ 
+          type: 'citations', 
+          citations: chunk.citations,
+          meta: { request: { space, labels, updatedAfter, topK, model } }
+        })}\n\n`);
+      } else if (chunk.type === 'content') {
+        reply.raw.write(`data: ${JSON.stringify({ 
+          type: 'content', 
+          content: chunk.content 
+        })}\n\n`);
+      } else if (chunk.type === 'done') {
+        reply.raw.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+        reply.raw.end();
+        break;
+      }
+    }
+    
   } catch (err) {
     const reqId = (req as any).reqId as string | undefined;
     logError({ reqId, method: req.method, url: req.url, err });

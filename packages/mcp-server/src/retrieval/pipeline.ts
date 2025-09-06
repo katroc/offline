@@ -247,7 +247,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
   }
 
   private chunksTocitations(chunks: Chunk[]): Citation[] {
-    const citationMap = new Map<string, Citation>();
+    const citationMap = new Map<string, { citation: Citation; snippet: string }>();
 
     for (const chunk of chunks) {
       const key = `${chunk.pageId}-${chunk.sectionAnchor || 'main'}`;
@@ -269,15 +269,37 @@ export class DefaultRAGPipeline implements RAGPipeline {
         }
         
         const url = chunk.sectionAnchor ? `${rawUrl}#${chunk.sectionAnchor}` : rawUrl;
+        
+        // Create snippet from chunk text (first 200 chars)
+        const snippet = chunk.text.length > 200 
+          ? chunk.text.slice(0, 197) + '...'
+          : chunk.text;
+        
         citationMap.set(key, {
-          pageId: chunk.pageId,
-          title: chunk.title,
-          url,
-          sectionAnchor: chunk.sectionAnchor
+          citation: {
+            pageId: chunk.pageId,
+            title: chunk.title,
+            url,
+            sectionAnchor: chunk.sectionAnchor,
+            snippet
+          },
+          snippet
         });
+      } else {
+        // Extend existing snippet with additional context
+        const existing = citationMap.get(key)!;
+        const additionalText = chunk.text.slice(0, 100);
+        if (!existing.snippet.includes(additionalText.slice(0, 50))) {
+          existing.citation.snippet = existing.snippet + '\n...\n' + additionalText;
+          existing.snippet = existing.citation.snippet;
+          // Keep total snippet under 400 chars
+          if (existing.citation.snippet.length > 400) {
+            existing.citation.snippet = existing.citation.snippet.slice(0, 397) + '...';
+          }
+        }
       }
     }
 
-    return Array.from(citationMap.values());
+    return Array.from(citationMap.values()).map(entry => entry.citation);
   }
 }
