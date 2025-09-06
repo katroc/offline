@@ -42,6 +42,10 @@ export interface RagQuery {
 export interface RagResponse {
   answer: string;
   citations: Citation[];
+  // Optional: display-ready deduped citations while preserving original mapping
+  displayCitations?: Citation[];
+  // Optional: map from original citation index -> displayCitations index
+  citationIndexMap?: number[];
 }
 
 export interface Filters {

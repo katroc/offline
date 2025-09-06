@@ -4,7 +4,6 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import { Icon } from './components/Icon';
-import { Tooltip } from './components/Tooltip';
 
 // Small helper for copy-to-clipboard with inline feedback
 const CopyButton: React.FC<{ text: string }> = ({ text }) => {
@@ -46,6 +45,8 @@ interface Citation {
 interface SmartResponseProps {
   answer: string;
   citations: Citation[];
+  displayCitations?: Citation[];
+  citationIndexMap?: number[];
   query: string;
   animate?: boolean;
 }
@@ -58,7 +59,7 @@ interface ResponseSection {
   icon?: string;
 }
 
-export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations, query, animate = false }) => {
+export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations, displayCitations, citationIndexMap, query, animate = false }) => {
   const [activeCitation, setActiveCitation] = React.useState<number | null>(null);
   const hoverTimeoutRef = React.useRef<number | null>(null);
   const citationRefs = React.useRef<Record<number, HTMLDivElement | null>>({});
@@ -113,8 +114,8 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
     }
   };
   
-  // Extract referenced citation numbers from the answer text
-  const getReferencedCitations = (text: string, allCitations: Citation[]): Citation[] => {
+  // Extract referenced citation numbers from the answer text (map to display indices if provided)
+  const getReferencedCitations = (text: string, allCitations: Citation[], renderList: Citation[]): Citation[] => {
     const citationPattern = /\[(\d+)\]/g;
     const referencedNumbers = new Set<number>();
     let match;
@@ -126,10 +127,22 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
       }
     }
     
-    // Return only citations that are actually referenced
-    return Array.from(referencedNumbers)
+    // If we have a mapping to a display list, convert to the display indices
+    const toDisplay = (n: number): number => {
+      const idx0 = n - 1;
+      if (citationIndexMap && idx0 >= 0 && idx0 < citationIndexMap.length) {
+        const mapped = citationIndexMap[idx0];
+        if (typeof mapped === 'number' && mapped >= 0 && mapped < renderList.length) return mapped + 1;
+      }
+      return n; // fallback
+    };
+
+    const displaySet = new Set<number>();
+    for (const n of referencedNumbers) displaySet.add(toDisplay(n));
+
+    return Array.from(displaySet)
       .sort((a, b) => a - b)
-      .map(num => allCitations[num - 1])
+      .map(num => renderList[num - 1])
       .filter(Boolean);
   };
 
@@ -162,32 +175,35 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
 
           // Only render a pill if this number exists in the citations list
           if (num > 0 && num <= citations.length) {
-            const citation = citations[num - 1];
+            // Map to display number if provided
+            let displayNum = num;
+            if (citationIndexMap && citationIndexMap[num - 1] !== undefined) {
+              displayNum = citationIndexMap[num - 1] + 1;
+            }
+            const renderList = (displayCitations && displayCitations.length > 0) ? displayCitations : citations;
+            const citation = renderList[displayNum - 1] || citations[num - 1];
             const title = citation?.title || `Source ${num}`;
-            const snippet = citation?.snippet || '';
             const onKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                focusCitation(num);
+                focusCitation(displayNum);
               }
             };
             result.push(
-              <Tooltip key={`cite-${num}-${match.index}`} content={snippet}>
-                <span
-                  className={`citation-ref${activeCitation === num ? ' active' : ''}`}
-                  data-cite={num}
-                  title={title}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`View source ${num}: ${title}`}
-                  onClick={() => focusCitation(num)}
-                  onKeyDown={onKeyDown}
-                  onMouseEnter={() => setActiveCitation(num)}
-                  onMouseLeave={() => setActiveCitation(null)}
-                >
-                  {num}
-                </span>
-              </Tooltip>
+              <span
+                key={`cite-${num}-${match.index}`}
+                className={`citation-ref${activeCitation === displayNum ? ' active' : ''}`}
+                data-cite={displayNum}
+                role="button"
+                tabIndex={0}
+                aria-label={`View source ${displayNum}: ${title}`}
+                onClick={() => focusCitation(displayNum)}
+                onKeyDown={onKeyDown}
+                onMouseEnter={() => setActiveCitation(displayNum)}
+                onMouseLeave={() => setActiveCitation(null)}
+              >
+                {displayNum}
+              </span>
             );
           }
           // If invalid citation number, we skip it (don't add anything)
@@ -246,6 +262,60 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
       out.push(n);
     }
     return out;
+  };
+
+  // Build a unique, consolidated citations list while preserving numbering
+  // semantics: each unique source (pageId+url) maps to its first occurrence index.
+  type UniqueCitation = { citation: Citation; firstIndex: number };
+
+  const buildUniqueCitations = (
+    sourceList: Citation[],
+    fullList: Citation[]
+  ): UniqueCitation[] => {
+    const byKey = new Map<string, UniqueCitation & { snippetSet: string[] }>();
+
+    const keyOf = (c: Citation) => `${c.pageId}|${c.url}`;
+
+    // Helper to cap snippet length similar to server (~400 chars)
+    const cap = (s: string) => (s.length > 400 ? s.slice(0, 397) + '...' : s);
+
+    for (let i = 0; i < sourceList.length; i++) {
+      const c = sourceList[i];
+      const key = keyOf(c);
+      const firstIndex = fullList.findIndex(x => x.pageId === c.pageId && x.url === c.url);
+      const safeIndex = firstIndex >= 0 ? firstIndex : i; // fallback
+
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          citation: { ...c },
+          firstIndex: safeIndex,
+          snippetSet: c.snippet ? [c.snippet] : []
+        });
+      } else {
+        const entry = byKey.get(key)!;
+        // Merge title/sectionAnchor conservatively (prefer existing)
+        if (!entry.citation.title && c.title) entry.citation.title = c.title;
+        if (!entry.citation.sectionAnchor && c.sectionAnchor) entry.citation.sectionAnchor = c.sectionAnchor;
+        // Merge snippets with simple dedupe and separator
+        if (c.snippet && !entry.snippetSet.includes(c.snippet)) {
+          entry.snippetSet.push(c.snippet);
+        }
+        // Keep earliest index for numbering
+        entry.firstIndex = Math.min(entry.firstIndex, safeIndex);
+      }
+    }
+
+    // Finalize snippet merge
+    const uniques: UniqueCitation[] = [];
+    for (const entry of byKey.values()) {
+      const mergedSnippet = entry.snippetSet.join('\n...\n');
+      entry.citation.snippet = mergedSnippet ? cap(mergedSnippet) : entry.citation.snippet;
+      uniques.push({ citation: entry.citation, firstIndex: entry.firstIndex });
+    }
+
+    // Sort by first appearance to keep numbering stable
+    uniques.sort((a, b) => a.firstIndex - b.firstIndex);
+    return uniques;
   };
 
   // Utility to map children -> wrap citation refs -> dedupe adjacent digits
@@ -348,8 +418,9 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
 
   const queryType = detectQueryType(query);
   const sections = parseResponse(displayedAnswer, queryType);
-  const referencedCitations = getReferencedCitations(displayedAnswer, citations);
-  const showAllCitations = referencedCitations.length === 0 && citations.length > 0;
+  const renderBaseList = (displayCitations && displayCitations.length > 0) ? displayCitations : citations;
+  const referencedCitations = getReferencedCitations(displayedAnswer, citations, renderBaseList);
+  const showAllCitations = referencedCitations.length === 0 && renderBaseList.length > 0;
 
   return (
     <div className={`smart-response ${getResponseClass(queryType)}`}>
@@ -465,37 +536,65 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
         <div className="citations-section">
           <h3 className="citations-header"><Icon name="stack" size={16} /> <span>Sources</span></h3>
           <div className="citations-list">
-            {(showAllCitations ? citations : referencedCitations).map((citation, index) => {
-              // Determine display number based on context
-              const displayNumber = showAllCitations
-                ? index + 1
-                : (citations.findIndex(c => c.pageId === citation.pageId && c.url === citation.url) + 1);
-              
-              return (
-                <div
-                  key={`${citation.pageId}-${index}`}
-                  className={`citation-item${activeCitation === displayNumber ? ' active' : ''}`}
-                  ref={(el) => { citationRefs.current[displayNumber] = el; }}
-                  id={`source-${displayNumber}`}
-                >
-                  <span className="citation-number">{displayNumber}</span>
-                  <Tooltip content={citation.snippet || ''}>
+            {(() => {
+              const renderList = (displayCitations && displayCitations.length > 0) ? displayCitations : null;
+              if (renderList) {
+                const list = showAllCitations ? renderList : getReferencedCitations(displayedAnswer, citations, renderList);
+                return list.map((citation, idx) => {
+                  const displayNumber = (displayCitations ? (renderList.indexOf(citation) + 1) : idx + 1);
+                  return (
+                    <div
+                      key={`${citation.pageId}-${displayNumber}`}
+                      className={`citation-item${activeCitation === displayNumber ? ' active' : ''}`}
+                      ref={(el) => { citationRefs.current[displayNumber] = el; }}
+                      id={`source-${displayNumber}`}
+                    >
+                      <span className="citation-number">{displayNumber}</span>
                     <a 
                       href={citation.url} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="citation-link"
-                      title={`Open ${citation.title} in new tab`}
+                      aria-label={`Open ${citation.title} in new tab`}
                     >
                       <span className="citation-title">{citation.title}</span>
                       {citation.sectionAnchor && (
                         <span className="citation-section">#{citation.sectionAnchor}</span>
                       )}
                     </a>
-                  </Tooltip>
-                </div>
-              );
-            })}
+                    </div>
+                  );
+                });
+              }
+              // Fallback: client-side unique consolidation
+              const sourceList = showAllCitations ? citations : getReferencedCitations(displayedAnswer, citations, citations);
+              const unique = buildUniqueCitations(sourceList, citations);
+              return unique.map(({ citation, firstIndex }) => {
+                const displayNumber = firstIndex + 1;
+                return (
+                  <div
+                    key={`${citation.pageId}-${displayNumber}`}
+                    className={`citation-item${activeCitation === displayNumber ? ' active' : ''}`}
+                    ref={(el) => { citationRefs.current[displayNumber] = el; }}
+                    id={`source-${displayNumber}`}
+                  >
+                    <span className="citation-number">{displayNumber}</span>
+                      <a 
+                        href={citation.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="citation-link"
+                        aria-label={`Open ${citation.title} in new tab`}
+                      >
+                        <span className="citation-title">{citation.title}</span>
+                        {citation.sectionAnchor && (
+                          <span className="citation-section">#{citation.sectionAnchor}</span>
+                        )}
+                      </a>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       )}

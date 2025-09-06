@@ -37,6 +37,11 @@ Endpoints
 - `POST /admin/sync` — crawl Confluence spaces into local store; body `{ spaces?: string[], updatedAfter?, maxPages?, pageSize? }`
 - `POST /admin/ingest` — ingest array of documents or Confluence API results; body `{ documents: DocumentSource[] }` or `{ confluence: { results: ConfluenceApiPage[] } }`
 
+Notes
+
+- Citations are now 1:1 with the retrieved chunks and preserve the exact order used to build the LLM context. This ensures that bracketed references like `[1]` in the answer map directly to `citations[0]`, `[2]` → `citations[1]`, etc. Each citation also includes a short `snippet` from the underlying chunk for better attribution.
+- Responses also include optional `displayCitations` (deduped by `pageId+url`, with merged snippets) and an `citationIndexMap` mapping from original citation indices to their deduped positions. Streaming `citations` events include `{ citations, displayCitations }`.
+
 Quick curl
 ```
 curl -s http://127.0.0.1:8787/health

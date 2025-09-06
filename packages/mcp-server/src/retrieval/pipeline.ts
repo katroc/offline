@@ -247,59 +247,43 @@ export class DefaultRAGPipeline implements RAGPipeline {
   }
 
   private chunksTocitations(chunks: Chunk[]): Citation[] {
-    const citationMap = new Map<string, { citation: Citation; snippet: string }>();
+    // IMPORTANT: Maintain 1:1 order with input chunks so [n] citations in the
+    // generated answer map directly to this array's indices (n-1).
+    const citations: Citation[] = [];
 
     for (const chunk of chunks) {
-      const key = `${chunk.pageId}-${chunk.sectionAnchor || 'main'}`;
-      if (!citationMap.has(key)) {
-        // Always construct absolute URLs
-        const base = process.env.CONFLUENCE_BASE_URL || 'https://confluence.local';
-        const baseUrl = base.endsWith('/') ? base.slice(0, -1) : base;
-        
-        let rawUrl: string;
-        if (chunk.url && chunk.url.startsWith('http')) {
-          // Already absolute URL
-          rawUrl = chunk.url;
-        } else if (chunk.url) {
-          // Relative URL - make it absolute
-          rawUrl = `${baseUrl}${chunk.url}`;
-        } else {
-          // Fallback to page ID construction
-          rawUrl = `${baseUrl}/pages/${chunk.pageId}`;
-        }
-        
-        const url = chunk.sectionAnchor ? `${rawUrl}#${chunk.sectionAnchor}` : rawUrl;
-        
-        // Create snippet from chunk text (first 200 chars)
-        const snippet = chunk.text.length > 200 
-          ? chunk.text.slice(0, 197) + '...'
-          : chunk.text;
-        
-        citationMap.set(key, {
-          citation: {
-            pageId: chunk.pageId,
-            title: chunk.title,
-            url,
-            sectionAnchor: chunk.sectionAnchor,
-            snippet
-          },
-          snippet
-        });
+      // Always construct absolute URLs
+      const base = process.env.CONFLUENCE_BASE_URL || 'https://confluence.local';
+      const baseUrl = base.endsWith('/') ? base.slice(0, -1) : base;
+
+      let rawUrl: string;
+      if (chunk.url && chunk.url.startsWith('http')) {
+        // Already absolute URL
+        rawUrl = chunk.url;
+      } else if (chunk.url) {
+        // Relative URL - make it absolute
+        rawUrl = `${baseUrl}${chunk.url}`;
       } else {
-        // Extend existing snippet with additional context
-        const existing = citationMap.get(key)!;
-        const additionalText = chunk.text.slice(0, 100);
-        if (!existing.snippet.includes(additionalText.slice(0, 50))) {
-          existing.citation.snippet = existing.snippet + '\n...\n' + additionalText;
-          existing.snippet = existing.citation.snippet;
-          // Keep total snippet under 400 chars
-          if (existing.citation.snippet.length > 400) {
-            existing.citation.snippet = existing.citation.snippet.slice(0, 397) + '...';
-          }
-        }
+        // Fallback to page ID construction
+        rawUrl = `${baseUrl}/pages/${chunk.pageId}`;
       }
+
+      const url = chunk.sectionAnchor ? `${rawUrl}#${chunk.sectionAnchor}` : rawUrl;
+
+      // Create snippet from chunk text (first 200 chars)
+      const snippet = chunk.text.length > 200
+        ? chunk.text.slice(0, 197) + '...'
+        : chunk.text;
+
+      citations.push({
+        pageId: chunk.pageId,
+        title: chunk.title,
+        url,
+        sectionAnchor: chunk.sectionAnchor,
+        snippet
+      });
     }
 
-    return Array.from(citationMap.values()).map(entry => entry.citation);
+    return citations;
   }
 }

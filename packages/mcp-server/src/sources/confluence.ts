@@ -110,38 +110,55 @@ export class ConfluenceClient implements DocumentSourceClient {
     const parts: string[] = [];
 
     if (params.query) {
-      // Improved query building for better search results
-      const stop = new Set(['how','do','i','use','what','is','the','a','an','to','of','for','about','tell','me','can','you','help','with','have','info','information','we','on','in','at','it','that','this']);
-      const tokens = params.query
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, ' ')
+      // Improved query building with phrase detection and domain prioritization
+      const stop = new Set(['how','do','i','use','what','is','the','a','an','to','of','for','about','tell','me','can','you','help','with','have','has','had','info','information','we','on','in','at','it','that','this','need','all','my','being']);
+
+      const raw = params.query.toLowerCase();
+      const baseTokens = raw
+        .replace(/[^a-z0-9\s-\.]/g, ' ')
         .split(/\s+/)
         .filter(Boolean)
+        .map(w => w.replace(/\.+$/g, '')) // normalize trailing dots
         .filter(w => !stop.has(w))
-        .map(w => w.trim())
-        .filter(w => w.length >= 2); // Allow 2-char terms for things like CVE IDs
+        .filter(w => w.length >= 2);
 
+      // Simple stemming for align variations
+      const stem = (w: string) => w.replace(/(alignment|aligned|aligning)$/,'align');
+      const tokens = baseTokens.map(stem);
       const unique = Array.from(new Set(tokens));
-      
-      // Prioritize important terms (CVEs, technical terms, etc.)
-      const important = unique.filter(t => 
-        t.startsWith('cve-') || 
-        (t.length >= 6 && !['information'].includes(t)) || 
-        (/^[A-Z0-9-]{4,}$/i.test(t) && t.length >= 4)
-      );
-      
-      if (important.length > 0) {
-        // Use OR for important terms to be less restrictive
-        const orTerms = important.slice(0, 3).map(t => `text ~ "${t}"`).join(' or ');
-        parts.push(`(${orTerms})`);
-      } else if (unique.length > 0) {
-        // For regular queries, use AND for first 2 terms only
-        const andTerms = unique.slice(0, 2).map(t => `text ~ "${t}"`).join(' and ');
-        parts.push(`(${andTerms})`);
-      } else {
-        // Fallback to original phrase if nothing survived
-        parts.push(`text ~ "${params.query}"`);
+
+      // Phrase detection for common patterns
+      const phrases: string[] = [];
+      if (/left\s*[- ]\s*align(?:ed|ment)?/.test(raw) || /always\s+left\s+aligned/.test(raw)) {
+        phrases.push('"left aligned"');
       }
+      if (/right\s*[- ]\s*align(?:ed|ment)?/.test(raw)) {
+        phrases.push('"right aligned"');
+      }
+      if (/(center|centre)\s*[- ]\s*align(?:ed|ment)?/.test(raw)) {
+        phrases.push('"center aligned"');
+      }
+
+      // Domain-priority terms
+      const domainPriority = new Set(['align','left','right','center','centre','diagram','diagrams','drawio','draw','confluence','jira']);
+      const prioritized = unique.filter(t => domainPriority.has(t) || /align/.test(t));
+      const fallbacks = unique.filter(t => !prioritized.includes(t));
+
+      const exprs: string[] = [];
+      if (phrases.length > 0) {
+        exprs.push('(' + phrases.map(p => `text ~ ${p}`).join(' or ') + ')');
+      }
+      const termPool = prioritized.length > 0 ? prioritized : fallbacks;
+      if (termPool.length > 0) {
+        // Use OR for the first few termPool tokens to be permissive
+        const orTerms = termPool.slice(0, 4).map(t => `text ~ "${t}"`).join(' or ');
+        exprs.push(`(${orTerms})`);
+      }
+      if (exprs.length === 0) {
+        // Fallback to full phrase query
+        exprs.push(`text ~ "${params.query}"`);
+      }
+      parts.push(exprs.join(' and '));
     }
 
     parts.push('type = page');

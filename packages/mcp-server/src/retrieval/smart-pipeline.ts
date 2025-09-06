@@ -2,6 +2,7 @@ import type { RAGPipeline, RetrievalResult } from './pipeline.js';
 import type { Filters } from '@app/shared';
 import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces.js';
 import { LLMDocumentAnalyzer, type ConversationContext } from './llm-document-analyzer.js';
+import { simpleTextRelevanceScore } from './llm-search.js';
 import { SimpleChunker } from './chunker.js';
 import type { Citation } from '@app/shared';
 
@@ -76,7 +77,7 @@ export class SmartRAGPipeline implements RAGPipeline {
       }
 
       // Phase 4: Convert to chunks using extracted relevant sections
-      const chunks = await this.analysesToChunks(relevantAnalyses, topK);
+      const chunks = await this.analysesToChunks(query, relevantAnalyses, topK);
       const citations = this.chunksToCitations(chunks);
 
       console.log(`Returning ${chunks.length} chunks from ${relevantAnalyses.length} relevant documents`);
@@ -156,15 +157,24 @@ export class SmartRAGPipeline implements RAGPipeline {
    * Build a broader, more permissive search query
    */
   private buildBroadQuery(query: string): string {
-    // Extract key terms but be less restrictive
-    const words = query.toLowerCase()
-      .replace(/[^\w\s-]/g, ' ')
+    // Extract key terms and drop filler words
+    const stop = new Set(['what','how','the','can','you','help','with','need','all','my','being','have','has','had','every','each']);
+    const tokens = query.toLowerCase()
+      .replace(/[^a-z0-9\s-\.]/g, ' ')
       .split(/\s+/)
-      .filter(w => w.length >= 3)
-      .filter(w => !['what', 'how', 'the', 'can', 'you', 'help', 'with'].includes(w));
+      .filter(Boolean)
+      .filter(w => !stop.has(w))
+      .map(w => w.replace(/\.+$/g, '')) // normalize trailing dots from draw.io
+      .filter(w => w.length >= 3);
 
-    // Use just the most important terms
-    return words.slice(0, 3).join(' ');
+    // Prefer domain-relevant tokens for layout/alignment issues
+    const prefer = new Set(['align','aligned','alignment','left','right','center','centre','diagram','diagrams','draw','drawio','drawio','confluence','jira']);
+    const normalized = tokens.map(t => t === 'draw' ? 'drawio' : t);
+    const preferred = normalized.filter(t => prefer.has(t) || /align/.test(t));
+    const pool = preferred.length > 0 ? preferred : normalized;
+
+    // Return up to 4 terms to give the server-side builder more signal
+    return Array.from(new Set(pool)).slice(0, 4).join(' ');
   }
 
   /**
@@ -252,6 +262,12 @@ export class SmartRAGPipeline implements RAGPipeline {
     if (/error|problem|issue|fix|troubleshoot/i.test(query)) {
       topics.push('troubleshooting');
     }
+
+    // Layout/Alignment-related
+    if (/(align|aligned|alignment|left\s+aligned|right\s+aligned|center\s+aligned|centre\s+aligned|layout|formatting)/i.test(query)) {
+      topics.push('alignment');
+      topics.push('layout');
+    }
     
     return topics;
   }
@@ -260,11 +276,58 @@ export class SmartRAGPipeline implements RAGPipeline {
    * Convert analysis results to chunks, prioritizing relevant sections
    */
   private async analysesToChunks(
+    query: string,
     analyses: any[], 
     topK: number
   ): Promise<any[]> {
     const chunks: any[] = [];
-    
+
+    // Helper: extract generic phrases (bigrams/trigrams) from query for scoring
+    const extractPhrases = (text: string): string[] => {
+      const stop = new Set(['the','a','an','to','of','for','and','or','but','if','then','else','with','without','on','in','at','by','from','as','is','are','was','were','be','been','being','i','you','we','they','he','she','it','my','our','your','their']);
+      const tokens = text.toLowerCase()
+        .replace(/[^a-z0-9\s-\.]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(w => w.replace(/\.+$/g, ''));
+      const filtered = tokens.filter(t => !stop.has(t) && t.length >= 2);
+      const phrases: string[] = [];
+      for (let i = 0; i < filtered.length - 1; i++) {
+        phrases.push(`${filtered[i]} ${filtered[i+1]}`);
+      }
+      for (let i = 0; i < filtered.length - 2; i++) {
+        phrases.push(`${filtered[i]} ${filtered[i+1]} ${filtered[i+2]}`);
+      }
+      // unique and keep up to 10
+      return Array.from(new Set(phrases)).slice(0, 10);
+    };
+
+    // Helper: score a chunk generically (no domain hacks)
+    const scoreChunk = (query: string, title: string, text: string): number => {
+      const base = simpleTextRelevanceScore(query, text, title); // 0..1
+      // Phrase match bonus
+      const phrases = extractPhrases(query);
+      const lower = text.toLowerCase();
+      let phraseHits = 0;
+      for (const p of phrases) {
+        if (p.length >= 5 && lower.includes(p)) phraseHits += 1;
+      }
+      const phraseBonus = Math.min(0.3, phraseHits * 0.06);
+
+      // Title/content mismatch penalty for generic categories (only if not in query)
+      const qLower = query.toLowerCase();
+      const tLower = (title || '').toLowerCase();
+      const penaltyTerms = ['overview','licens','migration','support','pricing','billing','desk','contact','policy'];
+      let penalty = 0;
+      for (const term of penaltyTerms) {
+        if (tLower.includes(term) && !qLower.includes(term)) penalty += 0.08;
+      }
+      penalty = Math.min(0.4, penalty);
+
+      const finalScore = Math.max(0, Math.min(1, base + phraseBonus - penalty));
+      return finalScore;
+    };
+
     for (const analysis of analyses.slice(0, topK)) {
       const doc = analysis.document;
       
@@ -284,7 +347,7 @@ export class SmartRAGPipeline implements RAGPipeline {
           });
         }
       } else {
-        // Fall back to chunking the full document
+        // Fall back to chunking the full document and pick best scoring chunks
         const page = {
           id: doc.id,
           title: doc.title,
@@ -296,7 +359,11 @@ export class SmartRAGPipeline implements RAGPipeline {
         };
         
         const docChunks = await this.chunker.chunkDocument(page, doc.content);
-        chunks.push(...docChunks.slice(0, 1)); // Take first chunk only
+        // Score chunks and select top 1-2
+        const scored = docChunks.map(ch => ({ ch, score: scoreChunk(query, doc.title, ch.text) }))
+          .sort((a, b) => b.score - a.score);
+        if (scored.length > 0) chunks.push(scored[0].ch);
+        if (scored.length > 1 && chunks.length < topK) chunks.push(scored[1].ch);
       }
       
       if (chunks.length >= topK) break;
@@ -327,7 +394,7 @@ export class SmartRAGPipeline implements RAGPipeline {
         return { chunks: [], citations: [] };
       }
       
-      // Simple chunking of fallback results
+      // Chunking of fallback results with generic scoring
       const chunks: any[] = [];
       for (const doc of response.documents.slice(0, topK)) {
         const page = {
@@ -341,7 +408,10 @@ export class SmartRAGPipeline implements RAGPipeline {
         };
         
         const docChunks = await this.chunker.chunkDocument(page, doc.content);
-        chunks.push(...docChunks.slice(0, 1));
+        const scored = docChunks.map(ch => ({ ch, score: simpleTextRelevanceScore(query, ch.text, ch.title) }))
+          .sort((a, b) => b.score - a.score);
+        if (scored.length > 0) chunks.push(scored[0].ch);
+        if (chunks.length >= topK) break;
       }
       
       return { chunks, citations: this.chunksToCitations(chunks) };
@@ -356,34 +426,36 @@ export class SmartRAGPipeline implements RAGPipeline {
    * Convert chunks to citations
    */
   private chunksToCitations(chunks: any[]): Citation[] {
-    const citationMap = new Map<string, Citation>();
-    
+    // Maintain 1:1 order with chunks so [n] maps to citations[n-1]
+    const citations: Citation[] = [];
+
     for (const chunk of chunks) {
-      const key = `${chunk.pageId}-${chunk.sectionAnchor || 'main'}`;
-      if (!citationMap.has(key)) {
-        const base = process.env.CONFLUENCE_BASE_URL || 'https://confluence.local';
-        const baseUrl = base.endsWith('/') ? base.slice(0, -1) : base;
-        
-        let rawUrl: string;
-        if (chunk.url && chunk.url.startsWith('http')) {
-          rawUrl = chunk.url;
-        } else if (chunk.url) {
-          rawUrl = `${baseUrl}${chunk.url}`;
-        } else {
-          rawUrl = `${baseUrl}/pages/${chunk.pageId}`;
-        }
-        
-        const url = chunk.sectionAnchor ? `${rawUrl}#${chunk.sectionAnchor}` : rawUrl;
-        citationMap.set(key, {
-          pageId: chunk.pageId,
-          title: chunk.title,
-          url,
-          sectionAnchor: chunk.sectionAnchor
-        });
+      const base = process.env.CONFLUENCE_BASE_URL || 'https://confluence.local';
+      const baseUrl = base.endsWith('/') ? base.slice(0, -1) : base;
+
+      let rawUrl: string;
+      if (chunk.url && chunk.url.startsWith('http')) {
+        rawUrl = chunk.url;
+      } else if (chunk.url) {
+        rawUrl = `${baseUrl}${chunk.url}`;
+      } else {
+        rawUrl = `${baseUrl}/pages/${chunk.pageId}`;
       }
+
+      const url = chunk.sectionAnchor ? `${rawUrl}#${chunk.sectionAnchor}` : rawUrl;
+      const text: string = chunk.text || '';
+      const snippet = text.length > 200 ? text.slice(0, 197) + '...' : text;
+
+      citations.push({
+        pageId: chunk.pageId,
+        title: chunk.title,
+        url,
+        sectionAnchor: chunk.sectionAnchor,
+        snippet
+      });
     }
-    
-    return Array.from(citationMap.values());
+
+    return citations;
   }
 
   // Required by interface but not used in smart pipeline

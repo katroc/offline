@@ -16,6 +16,14 @@ interface Message {
     sectionAnchor?: string;
     snippet?: string;
   }>;
+  displayCitations?: Array<{
+    pageId: string;
+    title: string;
+    url: string;
+    sectionAnchor?: string;
+    snippet?: string;
+  }>;
+  citationIndexMap?: number[]; // original index -> display index
 }
 
 interface Conversation {
@@ -404,13 +412,21 @@ function App() {
         url: string;
         sectionAnchor?: string;
         snippet?: string;
-      }> } = await response.json();
+      }>; displayCitations?: Array<{
+        pageId: string;
+        title: string;
+        url: string;
+        sectionAnchor?: string;
+        snippet?: string;
+      }>; citationIndexMap?: number[] } = await response.json();
 
       const assistantMessage: Message = {
         id: assistantMessageId,
         type: 'assistant',
         content: result.answer,
-        citations: result.citations
+        citations: result.citations,
+        displayCitations: result.displayCitations,
+        citationIndexMap: result.citationIndexMap
       };
 
       setConversations(prev => {
@@ -645,6 +661,8 @@ function App() {
                 <SmartResponse 
                   answer={message.content}
                   citations={message.citations || []}
+                  displayCitations={message.displayCitations}
+                  citationIndexMap={message.citationIndexMap}
                   query={index > 0 ? (current?.messages[index - 1]?.content || '') : ''}
                   animate={animatingMessageId === message.id}
                 />

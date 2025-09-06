@@ -129,9 +129,13 @@ app.post('/rag/stream', async (req, reply) => {
     // Stream from the real RAG pipeline
     for await (const chunk of ragQueryStream({ question, space, labels, updatedAfter, topK, model })) {
       if (chunk.type === 'citations') {
+        // If orchestrator provided both original and display, forward both.
+        const payload = typeof (chunk.citations as any)?.original !== 'undefined'
+          ? { citations: (chunk.citations as any).original, displayCitations: (chunk.citations as any).display }
+          : { citations: chunk.citations };
         reply.raw.write(`data: ${JSON.stringify({ 
           type: 'citations', 
-          citations: chunk.citations,
+          ...payload,
           meta: { request: { space, labels, updatedAfter, topK, model } }
         })}\n\n`);
       } else if (chunk.type === 'content') {
