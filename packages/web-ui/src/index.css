@@ -408,6 +408,17 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Natural subtitle next to product title */
+.header-subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-snug);
+}
+.header-subtitle::before {
+  content: "— ";
+  color: var(--text-muted);
+}
+
 .model-badge {
   background: linear-gradient(180deg, var(--bg-tertiary), var(--bg-secondary));
   color: var(--text-secondary);

@@ -311,9 +311,7 @@ function App() {
           <div className="header-content">
             <div className="header-title">
               <h1>Cabin</h1>
-              <div className="model-info">
-                <span className="model-badge">Documentation Assistant</span>
-              </div>
+              <span className="header-subtitle">Documentation assistant</span>
             </div>
             <div className="header-actions">
               <select
