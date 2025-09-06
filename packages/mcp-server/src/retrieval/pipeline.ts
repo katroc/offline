@@ -6,7 +6,7 @@ import type { Chunker } from './chunker.js';
 import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
 
 export interface RAGPipeline {
-  retrieveForQuery(query: string, filters: Filters, topK: number, model?: string): Promise<RetrievalResult>;
+  retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, conversationId?: string): Promise<RetrievalResult>;
   indexDocument(document: DocumentSource): Promise<void>;
   deleteDocument(pageId: string): Promise<void>;
 }
@@ -24,7 +24,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
     private localDocStore?: LocalDocStore
   ) {}
 
-  async retrieveForQuery(query: string, filters: Filters, topK: number, model?: string): Promise<RetrievalResult> {
+  async retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, _conversationId?: string): Promise<RetrievalResult> {
     console.log(`RAG Pipeline: Retrieving for query "${query}" with filters:`, filters);
 
     // 1. Get candidate documents

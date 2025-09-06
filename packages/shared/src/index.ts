@@ -37,6 +37,7 @@ export interface RagQuery {
   updatedAfter?: string; // ISO8601
   topK?: number;
   model?: string; // Optional model override
+  conversationId?: string; // Optional conversation/thread identifier
 }
 
 export interface RagResponse {

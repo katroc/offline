@@ -17,7 +17,7 @@ export class SmartRAGPipeline implements RAGPipeline {
     maxChunkSize: 1200, 
     overlap: 200 
   });
-  private conversationMemory: string[] = []; // Store recent queries
+  private conversationMemory = new Map<string, string[]>(); // Store recent queries per conversation
 
   constructor(
     private documentClient: DocumentSourceClient
@@ -27,22 +27,21 @@ export class SmartRAGPipeline implements RAGPipeline {
     query: string, 
     filters: Filters, 
     topK: number, 
-    model?: string
+    model?: string,
+    conversationId?: string
   ): Promise<RetrievalResult> {
-    console.log(`Smart RAG Pipeline: Analyzing query "${query}"`);
+    const convKey = conversationId || 'global';
+    console.log(`Smart RAG Pipeline: Analyzing query "${query}" (conv=${convKey})`);
     
-    // Add to conversation memory
-    this.conversationMemory.push(query);
-    if (this.conversationMemory.length > 10) {
-      this.conversationMemory = this.conversationMemory.slice(-10); // Keep last 10 queries
-    }
+    // Add to per-conversation memory
+    const mem = this.conversationMemory.get(convKey) || [];
+    mem.push(query);
+    if (mem.length > 10) mem.splice(0, mem.length - 10);
+    this.conversationMemory.set(convKey, mem);
 
     try {
       // Extract conversation context
-      const context = await this.analyzer.extractConversationContext(
-        this.conversationMemory, 
-        model
-      );
+      const context = await this.analyzer.extractConversationContext(mem, model);
       console.log('Conversation context:', context);
 
       // Phase 1: Cast a wide net - get many potentially relevant documents

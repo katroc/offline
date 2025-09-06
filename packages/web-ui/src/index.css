@@ -1499,6 +1499,30 @@ body {
   background: var(--text-muted);
 }
 
+/* Match history pane scrollbar to conversation */
+.history-pane {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
+}
+
+.history-pane::-webkit-scrollbar {
+  width: var(--space-1);
+}
+
+.history-pane::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-pane::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 3px;
+}
+
+.history-pane::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .workarea { 
