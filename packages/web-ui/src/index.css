@@ -188,11 +188,152 @@ body {
 .history-new { display: none; }
 .history-list { display: flex; flex-direction: column; gap: var(--space-1); }
 .history-empty { color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-3); text-align: center; }
-.history-item { text-align: left; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); cursor: pointer; }
-.history-item:hover { background: var(--bg-hover); }
-.history-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 15%, transparent); }
-.history-item .item-title { color: var(--text-primary); font-size: var(--text-sm); line-height: var(--leading-snug); }
-.history-item .item-date { color: var(--text-faint); font-size: var(--text-xs); margin-top: var(--space-1); }
+
+.history-item { 
+  display: flex;
+  align-items: center;
+  text-align: left; 
+  background: var(--bg-tertiary); 
+  border: 1px solid var(--border); 
+  border-radius: var(--radius-md); 
+  padding: 0;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.history-item:hover { 
+  background: var(--bg-hover); 
+}
+
+.history-item:hover .item-delete {
+  opacity: 1;
+}
+
+.history-item.active { 
+  border-color: var(--accent); 
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 15%, transparent); 
+}
+
+.history-item.generating-title {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.item-content {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: var(--space-2);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  min-width: 0; /* Allow text truncation */
+}
+
+.item-content:hover {
+  background: none;
+}
+
+.history-item .item-title { 
+  color: var(--text-primary); 
+  font-size: var(--text-sm); 
+  line-height: var(--leading-snug);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.history-item .item-date { 
+  color: var(--text-faint); 
+  font-size: var(--text-xs); 
+  margin-top: var(--space-1); 
+}
+
+.item-delete {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: var(--space-2);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  border-radius: var(--radius-sm);
+  margin-right: var(--space-1);
+}
+
+.item-delete:hover {
+  background: color-mix(in oklab, var(--error) 10%, transparent);
+  color: var(--error);
+}
+
+.delete-confirm {
+  display: flex;
+  gap: var(--space-1);
+  margin-right: var(--space-1);
+  padding: var(--space-1);
+  background: var(--bg-quaternary);
+  border-radius: var(--radius-sm);
+  animation: slideIn 0.2s ease;
+}
+
+.confirm-delete,
+.cancel-delete {
+  background: none;
+  border: none;
+  padding: var(--space-1);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-delete {
+  color: var(--success);
+}
+
+.confirm-delete:hover {
+  background: color-mix(in oklab, var(--success) 15%, transparent);
+}
+
+.cancel-delete {
+  color: var(--text-muted);
+}
+
+.cancel-delete:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.title-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-light);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 .main-pane { 
   flex: 1; 

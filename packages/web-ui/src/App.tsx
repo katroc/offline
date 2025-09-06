@@ -3,6 +3,7 @@ import type { RagQuery } from '@app/shared';
 import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
 import { HistoryPane, type HistoryConversation } from './components/HistoryPane';
+import { generateConversationTitle, shouldUpdateTitle } from './utils/titleSummarization';
 
 interface Message {
   id: string;
@@ -22,6 +23,7 @@ interface Conversation {
   createdAt: number;
   updatedAt: number;
   messages: Message[];
+  generatingTitle?: boolean;
 }
 
 function App() {
@@ -155,6 +157,15 @@ function App() {
     setActiveId(conv.id);
   };
 
+  const deleteConversation = (id: string) => {
+    setConversations(prev => prev.filter(c => c.id !== id));
+    // If we're deleting the active conversation, switch to the next one
+    if (activeId === id) {
+      const remaining = conversations.filter(c => c.id !== id);
+      setActiveId(remaining.length > 0 ? remaining[0].id : null);
+    }
+  };
+
   const current = conversations.find(c => c.id === activeId) || conversations[0];
   useEffect(() => {
     if (!activeId && conversations.length > 0) setActiveId(conversations[0].id);
@@ -230,6 +241,45 @@ function App() {
         conv.messages = [...conv.messages, assistantMessage];
         conv.updatedAt = Date.now();
         list[targetIdx] = conv;
+        
+        // Auto-generate title if appropriate
+        const firstUserMsg = conv.messages.find(m => m.type === 'user')?.content;
+        
+        if (shouldUpdateTitle(conv.title, conv.messages.length, firstUserMsg)) {
+          // Set loading state
+          setConversations(currentList => {
+            const updatedList = [...currentList];
+            const convIdx = updatedList.findIndex(c => c.id === conv.id);
+            if (convIdx >= 0) {
+              updatedList[convIdx] = { ...updatedList[convIdx], generatingTitle: true };
+            }
+            return updatedList;
+          });
+          
+          generateConversationTitle(conv.messages, selectedModel)
+            .then(newTitle => {
+              setConversations(currentList => {
+                const updatedList = [...currentList];
+                const convIdx = updatedList.findIndex(c => c.id === conv.id);
+                if (convIdx >= 0) {
+                  updatedList[convIdx] = { ...updatedList[convIdx], title: newTitle, generatingTitle: false };
+                }
+                return updatedList;
+              });
+            })
+            .catch(error => {
+              console.warn('Failed to update conversation title:', error);
+              setConversations(currentList => {
+                const updatedList = [...currentList];
+                const convIdx = updatedList.findIndex(c => c.id === conv.id);
+                if (convIdx >= 0) {
+                  updatedList[convIdx] = { ...updatedList[convIdx], generatingTitle: false };
+                }
+                return updatedList;
+              });
+            });
+        }
+        
         return list;
       });
     } catch (error) {
@@ -327,10 +377,16 @@ function App() {
 
         <div className="workarea">
           <HistoryPane
-            items={conversations.map<HistoryConversation>(c => ({ id: c.id, title: c.title || 'Untitled', updatedAt: c.updatedAt }))}
+            items={conversations.map<HistoryConversation>(c => ({ 
+              id: c.id, 
+              title: c.title || 'Untitled', 
+              updatedAt: c.updatedAt,
+              generatingTitle: c.generatingTitle
+            }))}
             activeId={current?.id || null}
             onSelect={(id) => setActiveId(id)}
             onNew={createConversation}
+            onDelete={deleteConversation}
           />
           <div className="main-pane">
             <div className="conversation">
