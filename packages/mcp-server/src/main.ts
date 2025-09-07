@@ -105,8 +105,8 @@ app.post('/rag/query', async (req, reply) => {
     if (!result.ok) {
       return reply.code(400).send({ error: result.error });
     }
-    const { question, space, labels, updatedAfter, topK, model } = result.value;
-    const rag = await ragQuery({ question, space, labels, updatedAfter, topK, model });
+    const { question, space, labels, updatedAfter, topK, model, relevanceThreshold } = result.value;
+    const rag = await ragQuery({ question, space, labels, updatedAfter, topK, model, relevanceThreshold });
     return reply.send({ ...rag, meta: { request: { space, labels, updatedAfter, topK, model } } });
   } catch (err) {
     const reqId = (req as any).reqId as string | undefined;
@@ -132,10 +132,10 @@ app.post('/rag/stream', async (req, reply) => {
       'Access-Control-Allow-Headers': 'Cache-Control'
     });
     
-    const { question, space, labels, updatedAfter, topK, model } = result.value;
+    const { question, space, labels, updatedAfter, topK, model, relevanceThreshold } = result.value;
     
     // Stream from the real RAG pipeline
-    for await (const chunk of ragQueryStream({ question, space, labels, updatedAfter, topK, model })) {
+    for await (const chunk of ragQueryStream({ question, space, labels, updatedAfter, topK, model, relevanceThreshold })) {
       if (chunk.type === 'citations') {
         // If orchestrator provided both original and display, forward both.
         const payload = typeof (chunk.citations as any)?.original !== 'undefined'

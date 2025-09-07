@@ -8,7 +8,7 @@ import { GoogleEmbedder } from '../llm/google-embedder.js';
 import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
 
 export interface RAGPipeline {
-  retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, conversationId?: string): Promise<RetrievalResult>;
+  retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, conversationId?: string, relevanceThreshold?: number): Promise<RetrievalResult>;
   indexDocument(document: DocumentSource): Promise<void>;
   deleteDocument(pageId: string): Promise<void>;
 }
@@ -31,7 +31,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
     this.embedder = embedder || new GoogleEmbedder();
   }
 
-  async retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, _conversationId?: string): Promise<RetrievalResult> {
+  async retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, _conversationId?: string, _relevanceThreshold?: number): Promise<RetrievalResult> {
     console.log(`RAG Pipeline: Retrieving for query "${query}" with filters:`, filters);
 
     // 1. Try vector search first
@@ -55,6 +55,18 @@ export class DefaultRAGPipeline implements RAGPipeline {
         console.log(`Vector search: ${above}/${vectorResults.length} >= threshold (${threshold}${useAdaptive ? ' adaptive' : ''})`);
 
         if (vectorResults.length > 0) {
+          // Check global relevance threshold before proceeding
+          const envThreshold = isFinite(Number(process.env.RELEVANCE_THRESHOLD)) 
+            ? Number(process.env.RELEVANCE_THRESHOLD) 
+            : 0.2; // Much more permissive default for general questions
+          const globalThreshold = _relevanceThreshold ?? envThreshold;
+          const maxVectorScore = Math.max(...vectorResults.map(r => r.score ?? 0));
+          
+          if (maxVectorScore <= globalThreshold - 0.001) { // Allow small precision tolerance
+            console.log(`Vector results do not meet global threshold ${globalThreshold} (max: ${maxVectorScore.toFixed(3)}). Returning empty results.`);
+            return { chunks: [], citations: [] };
+          }
+
           const mmr = this.applyMMR(vectorResults, queryEmbedding[0], Math.min(topK * 2, Math.max(topK, vectorResults.length)));
           // Optional lexical floor to reduce off-topic sources
           const kwFloor = Number.isFinite(Number(process.env.MIN_KEYWORD_SCORE)) ? Number(process.env.MIN_KEYWORD_SCORE) : 0.0;
@@ -136,6 +148,18 @@ export class DefaultRAGPipeline implements RAGPipeline {
 
     const rankedResults = await rankDocumentsByRelevance(query, documents, Math.min(topK, documents.length), model);
     console.log(`LLM ranked ${rankedResults.length} documents by relevance`);
+
+    // Check global relevance threshold for keyword search results  
+    const envThreshold = isFinite(Number(process.env.RELEVANCE_THRESHOLD)) 
+      ? Number(process.env.RELEVANCE_THRESHOLD) 
+      : 0.2; // Much more permissive default for general questions
+    const globalThreshold = _relevanceThreshold ?? envThreshold;
+    const maxDocumentScore = rankedResults.length > 0 ? Math.max(...rankedResults.map(r => r.relevanceScore)) : 0;
+    
+    if (maxDocumentScore <= globalThreshold - 0.001) { // Allow small precision tolerance
+      console.log(`Keyword search results do not meet global threshold ${globalThreshold} (max: ${maxDocumentScore.toFixed(3)}). Returning empty results.`);
+      return { chunks: [], citations: [] };
+    }
 
     // Index documents in background for future vector searches
     this.indexDocumentsInBackground(documents);
