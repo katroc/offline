@@ -28,8 +28,7 @@ export class SmartRAGPipeline implements RAGPipeline {
     filters: Filters, 
     topK: number, 
     model?: string,
-    conversationId?: string,
-    relevanceThreshold?: number
+    conversationId?: string
   ): Promise<RetrievalResult> {
     const convKey = conversationId || 'global';
     console.log(`Smart RAG Pipeline: Analyzing query "${query}" (conv=${convKey})`);
@@ -66,17 +65,16 @@ export class SmartRAGPipeline implements RAGPipeline {
         console.log(`- ${a.document.title}: ${a.relevanceScore.toFixed(2)} (${a.answersQuery ? 'ANSWERS' : 'related'})`);
       });
 
-      // Phase 3: Check global relevance threshold first
+      // Phase 3: Check global relevance threshold from environment first
       const envThreshold = isFinite(Number(process.env.RELEVANCE_THRESHOLD)) 
         ? Number(process.env.RELEVANCE_THRESHOLD) 
         : 0.2; // Much more permissive default for general questions
-      const globalThreshold = relevanceThreshold ?? envThreshold;
       const maxRelevanceScore = analyses.length > 0 ? Math.max(...analyses.map(a => a.relevanceScore)) : 0;
       const hasDirectAnswer = analyses.some(a => a.answersQuery);
       
       // If no document meets the global threshold and none directly answer the query, return empty
-      if (maxRelevanceScore <= globalThreshold - 0.001 && !hasDirectAnswer) { // Allow small precision tolerance
-        console.log(`No documents meet global relevance threshold ${globalThreshold} (max: ${maxRelevanceScore.toFixed(3)}, hasDirectAnswer: ${hasDirectAnswer}). Returning empty results to allow ungrounded response.`);
+      if (maxRelevanceScore <= envThreshold - 0.001 && !hasDirectAnswer) { // Allow small precision tolerance
+        console.log(`No documents meet global relevance threshold ${envThreshold} (max: ${maxRelevanceScore.toFixed(3)}, hasDirectAnswer: ${hasDirectAnswer}). Returning empty results to allow ungrounded response.`);
         return { chunks: [], citations: [] };
       }
 
@@ -87,7 +85,7 @@ export class SmartRAGPipeline implements RAGPipeline {
 
       if (relevantAnalyses.length === 0) {
         console.log('No highly relevant documents found, trying CQL fallback');
-        return await this.cqlFallback(query, filters, topK, model, relevanceThreshold);
+        return await this.cqlFallback(query, filters, topK, model);
       }
 
       // Phase 5: Convert to chunks using extracted relevant sections
@@ -99,7 +97,7 @@ export class SmartRAGPipeline implements RAGPipeline {
 
     } catch (error) {
       console.warn('Smart analysis failed, falling back to CQL:', error);
-      return await this.cqlFallback(query, filters, topK, model, relevanceThreshold);
+      return await this.cqlFallback(query, filters, topK, model);
     }
   }
 
@@ -393,8 +391,7 @@ export class SmartRAGPipeline implements RAGPipeline {
     query: string, 
     filters: Filters, 
     topK: number, 
-    model?: string,
-    relevanceThreshold?: number
+    model?: string
   ): Promise<RetrievalResult> {
     console.log('Using CQL fallback search');
     
@@ -409,19 +406,18 @@ export class SmartRAGPipeline implements RAGPipeline {
         return { chunks: [], citations: [] };
       }
 
-      // Apply relevance threshold to CQL fallback results as well
+      // Apply relevance threshold from environment to CQL fallback results as well
       const envThreshold = isFinite(Number(process.env.RELEVANCE_THRESHOLD)) 
         ? Number(process.env.RELEVANCE_THRESHOLD) 
         : 0.2; // Much more permissive default for general questions
-      const globalThreshold = relevanceThreshold ?? envThreshold;
       const hasDirectMatch = response.documents.some(doc => {
         const queryLower = query.toLowerCase();
         const titleMatch = doc.title.toLowerCase().includes(queryLower);
         return titleMatch; // Simple heuristic for direct match in CQL fallback
       });
 
-      if (!hasDirectMatch && globalThreshold >= 0.4) { // Allow boundary case
-        console.log(`CQL fallback: No direct matches found and threshold ${globalThreshold} is high. Returning empty results.`);
+      if (!hasDirectMatch && envThreshold >= 0.4) { // Allow boundary case
+        console.log(`CQL fallback: No direct matches found and threshold ${envThreshold} is high. Returning empty results.`);
         return { chunks: [], citations: [] };
       }
       

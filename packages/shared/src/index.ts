@@ -39,7 +39,6 @@ export interface RagQuery {
   topK?: number;
   model?: string; // Optional model override
   conversationId?: string; // Optional conversation/thread identifier
-  relevanceThreshold?: number; // Optional minimum relevance score (0-1) to include grounded sources
 }
 
 export interface RagResponse {

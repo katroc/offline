@@ -167,22 +167,21 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
     // Use Smart Pipeline by default, fall back to traditional pipeline if needed
     const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
     console.log(`DEBUG: USE_SMART_PIPELINE="${process.env.USE_SMART_PIPELINE}", useSmartPipeline=${useSmartPipeline}`);
-    
     let retrieval;
     if (useSmartPipeline) {
       console.log('Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
     } else {
       console.log('Using traditional pipeline');
       const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
       
       // If traditional pipeline returns no results, try Smart RAG as fallback
       if (retrieval.chunks.length === 0) {
         console.log('Traditional pipeline returned no results, trying Smart RAG as fallback');
         const smartPipe = await getSmartPipeline();
-        const smartRetrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+        const smartRetrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
         if (smartRetrieval.chunks.length > 0) {
           console.log(`Smart RAG fallback found ${smartRetrieval.chunks.length} relevant results`);
           retrieval = smartRetrieval;
@@ -325,22 +324,21 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
     // Use Smart Pipeline by default, fall back to traditional pipeline if needed
     const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
     console.log(`DEBUG: USE_SMART_PIPELINE="${process.env.USE_SMART_PIPELINE}", useSmartPipeline=${useSmartPipeline}`);
-    
     let retrieval;
     if (useSmartPipeline) {
       console.log('Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
     } else {
       console.log('Using traditional pipeline');
       const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
       
       // If traditional pipeline returns no results, try Smart RAG as fallback
       if (retrieval.chunks.length === 0) {
         console.log('Traditional pipeline returned no results, trying Smart RAG as fallback');
         const smartPipe = await getSmartPipeline();
-        const smartRetrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+        const smartRetrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
         if (smartRetrieval.chunks.length > 0) {
           console.log(`Smart RAG fallback found ${smartRetrieval.chunks.length} relevant results`);
           retrieval = smartRetrieval;

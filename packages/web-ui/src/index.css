@@ -622,7 +622,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
-  width: 400px;
+  width: 460px; /* 400px + 15% = 460px */
   max-width: 90vw;
   max-height: 90vh;
   display: flex;
@@ -678,6 +678,26 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
+}
+
+.settings-content::-webkit-scrollbar {
+  width: var(--space-1);
+}
+
+.settings-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-content::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 3px;
+}
+
+.settings-content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .settings-section {
@@ -690,7 +710,7 @@ body {
   margin: 0;
   font-size: var(--text-base);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--accent);
   border-bottom: 1px solid var(--border-faint);
   padding-bottom: var(--space-2);
 }
@@ -735,6 +755,39 @@ body {
 
 .text-input::placeholder {
   color: var(--text-muted);
+}
+
+/* Normalize all input sizes */
+.text-input,
+.select-input,
+input[type="number"] {
+  height: 40px;
+  min-height: 40px;
+}
+
+/* Checkbox styling and alignment */
+.setting-group input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0; /* Prevent checkbox from shrinking */
+}
+
+.setting-group.checkbox-group {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.setting-group.checkbox-group label {
+  flex-direction: column;
+  flex: 1;
+  margin: 0;
+  cursor: pointer;
+  min-width: 0; /* Allow text to wrap properly */
 }
 
 .range-input-group {
@@ -785,6 +838,95 @@ body {
   min-width: 2rem;
   text-align: center;
 }
+
+/* Settings action buttons */
+.settings-action-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.settings-action-button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 36px;
+  min-width: 80px;
+}
+
+.settings-action-button:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-action-button:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.settings-action-button:disabled {
+  background: var(--bg-quaternary);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.settings-action-button.secondary {
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
+}
+
+.settings-action-button.secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+/* Notification toast */
+.notification-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: var(--success);
+  color: white;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  animation: slideInFromTop 0.3s ease-out;
+}
+
+.notification-toast.error {
+  background: var(--error);
+}
+
+.notification-toast.info {
+  background: var(--accent);
+}
+
+@keyframes slideInFromTop {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
