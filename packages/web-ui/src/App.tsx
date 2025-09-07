@@ -270,6 +270,45 @@ function App() {
     let filename: string;
     let mimeType: string;
 
+    // Helper: compute only the citations that were actually referenced in the answer text
+    const getReferencedCitations = (
+      message: Message
+    ): Array<{ pageId: string; title: string; url: string; sectionAnchor?: string; snippet?: string }> => {
+      const text = message.content || '';
+      const all = message.citations || [];
+      const display = message.displayCitations || [];
+      const map = message.citationIndexMap || [];
+      const numsInOrder: number[] = [];
+      const seen = new Set<number>();
+      const re = /\[(\d+)\]/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) {
+        const n = parseInt(m[1], 10);
+        if (!Number.isNaN(n) && n > 0 && !seen.has(n)) {
+          seen.add(n);
+          numsInOrder.push(n);
+        }
+      }
+      const uniqueBy = new Set<string>();
+      const picked: typeof all = [];
+      for (const n of numsInOrder) {
+        const idx0 = n - 1;
+        let cit = all[idx0];
+        if (display.length > 0 && map.length > idx0 && typeof map[idx0] === 'number') {
+          const dispIdx = map[idx0] as number;
+          cit = display[dispIdx] || cit;
+        }
+        if (cit) {
+          const key = `${cit.pageId}|${cit.url}`;
+          if (!uniqueBy.has(key)) {
+            uniqueBy.add(key);
+            picked.push(cit);
+          }
+        }
+      }
+      return picked;
+    };
+
     if (format === 'markdown') {
       content = `# ${current.title}\n\n*Exported: ${timestamp}*\n\n`;
       
@@ -278,9 +317,10 @@ function App() {
           content += `## User\n\n${msg.content}\n\n`;
         } else {
           content += `## Assistant\n\n${msg.content}\n\n`;
-          if (msg.citations && msg.citations.length > 0) {
+          const referenced = getReferencedCitations(msg);
+          if (referenced.length > 0) {
             content += `### Sources\n\n`;
-            msg.citations.forEach((citation, idx) => {
+            referenced.forEach((citation, idx) => {
               content += `${idx + 1}. [${citation.title}](${citation.url})\n`;
             });
             content += '\n';
@@ -297,12 +337,22 @@ function App() {
         createdAt: current.createdAt,
         updatedAt: current.updatedAt,
         exportedAt: Date.now(),
-        messages: current.messages.map(msg => ({
-          id: msg.id,
-          type: msg.type,
-          content: msg.content,
-          citations: msg.citations || []
-        }))
+        messages: current.messages.map(msg => {
+          if (msg.type === 'assistant') {
+            return {
+              id: msg.id,
+              type: msg.type,
+              content: msg.content,
+              citations: getReferencedCitations(msg)
+            };
+          }
+          return {
+            id: msg.id,
+            type: msg.type,
+            content: msg.content,
+            citations: [] as any[]
+          };
+        })
       }, null, 2);
 
       filename = `${current.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')}.json`;

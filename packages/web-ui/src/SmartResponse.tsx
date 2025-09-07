@@ -420,7 +420,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
   const sections = parseResponse(displayedAnswer, queryType);
   const renderBaseList = (displayCitations && displayCitations.length > 0) ? displayCitations : citations;
   const referencedCitations = getReferencedCitations(displayedAnswer, citations, renderBaseList);
-  const showAllCitations = referencedCitations.length === 0 && renderBaseList.length > 0;
+  // Only show sources that are directly cited in the answer (no fallback to all)
 
   return (
     <div className={`smart-response ${getResponseClass(queryType)}`}>
@@ -532,14 +532,14 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
       </div>
 
       {/* Citations section - show referenced citations, fallback to all if none referenced */}
-      {(referencedCitations.length > 0 || showAllCitations) && (
+      {referencedCitations.length > 0 && (
         <div className="citations-section">
           <h3 className="citations-header"><Icon name="stack" size={16} /> <span>Sources</span></h3>
           <div className="citations-list">
             {(() => {
               const renderList = (displayCitations && displayCitations.length > 0) ? displayCitations : null;
               if (renderList) {
-                const list = showAllCitations ? renderList : getReferencedCitations(displayedAnswer, citations, renderList);
+                const list = referencedCitations;
                 return list.map((citation, idx) => {
                   const displayNumber = (displayCitations ? (renderList.indexOf(citation) + 1) : idx + 1);
                   return (
@@ -566,8 +566,8 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
                   );
                 });
               }
-              // Fallback: client-side unique consolidation
-              const sourceList = showAllCitations ? citations : getReferencedCitations(displayedAnswer, citations, citations);
+              // Fallback: client-side consolidation of only referenced items
+              const sourceList = referencedCitations;
               const unique = buildUniqueCitations(sourceList, citations);
               return unique.map(({ citation, firstIndex }) => {
                 const displayNumber = firstIndex + 1;

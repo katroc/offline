@@ -38,16 +38,39 @@ export class DefaultRAGPipeline implements RAGPipeline {
     try {
       const queryEmbedding = await this.embedder.embed([query]);
       if (queryEmbedding.length > 0) {
-        const vectorResults = await this.vectorStore.searchSimilar(queryEmbedding[0], filters, topK);
-        console.log(`Vector search found ${vectorResults.length} results`);
-        
-        // Check if results are actually relevant (similarity threshold)
-        const relevantResults = vectorResults.filter(result => result.score > 0.5); // Only keep high-similarity results
-        console.log(`Vector search: ${relevantResults.length}/${vectorResults.length} results above similarity threshold`);
-        
-        if (relevantResults.length > 0) {
-          const chunks = relevantResults.map(result => result.chunk);
+        // Fetch more candidates than needed, then downselect with MMR
+        const minCandidates = Math.max(topK, parseInt(process.env.MIN_VECTOR_RESULTS || '3', 10) || 3);
+        const candidateK = Math.min(Math.max(topK * 5, minCandidates), 50);
+        const vectorResults = await this.vectorStore.searchSimilar(queryEmbedding[0], filters, candidateK);
+        console.log(`Vector search candidates=${vectorResults.length} (requested ${candidateK})`);
+
+        // Dynamic threshold (optional informational logging)
+        const baseThreshold = isFinite(Number(process.env.RELEVANCE_THRESHOLD))
+          ? Number(process.env.RELEVANCE_THRESHOLD)
+          : 0.5;
+        const useAdaptive = String(process.env.ADAPTIVE_THRESHOLD || '').toLowerCase() === 'true';
+        const maxScore = vectorResults.reduce((m, r) => Math.max(m, r.score ?? 0), 0);
+        const threshold = useAdaptive ? Math.max(baseThreshold, 0.6 * maxScore) : baseThreshold;
+        const above = vectorResults.filter(r => r.score >= threshold).length;
+        console.log(`Vector search: ${above}/${vectorResults.length} >= threshold (${threshold}${useAdaptive ? ' adaptive' : ''})`);
+
+        if (vectorResults.length > 0) {
+          const mmr = this.applyMMR(vectorResults, queryEmbedding[0], Math.min(topK * 2, Math.max(topK, vectorResults.length)));
+          // Optional lexical floor to reduce off-topic sources
+          const kwFloor = Number.isFinite(Number(process.env.MIN_KEYWORD_SCORE)) ? Number(process.env.MIN_KEYWORD_SCORE) : 0.0;
+          const rescored = mmr.map(r => ({
+            r,
+            kw: simpleTextRelevanceScore(query, r.chunk.text, r.chunk.title)
+          }));
+          const filtered = rescored
+            .filter(x => x.kw >= kwFloor)
+            .sort((a, b) => (0.3 * (b.r.score ?? 0)) + (0.7 * b.kw) - ((0.3 * (a.r.score ?? 0)) + (0.7 * a.kw)))
+            .slice(0, topK)
+            .map(x => x.r);
+          const chunks = (filtered.length > 0 ? filtered : mmr.slice(0, topK)).map(r => r.chunk);
+          this.triggerLazyValidation(chunks);
           const citations = this.chunksTocitations(chunks);
+          console.log(`Returning ${chunks.length} chunks from vector MMR${kwFloor > 0 ? ` with kwFloor=${kwFloor}` : ''}`);
           return { chunks, citations };
         }
       }
@@ -303,8 +326,12 @@ export class DefaultRAGPipeline implements RAGPipeline {
         // Relative URL - make it absolute
         rawUrl = `${baseUrl}${chunk.url}`;
       } else {
-        // Fallback to page ID construction
-        rawUrl = `${baseUrl}/pages/${chunk.pageId}`;
+        // Better fallback: include space key when available to match Confluence WebUI URLs
+        if (chunk.space) {
+          rawUrl = `${baseUrl}/spaces/${chunk.space}/pages/${chunk.pageId}`;
+        } else {
+          rawUrl = `${baseUrl}/pages/${chunk.pageId}`;
+        }
       }
 
       const url = chunk.sectionAnchor ? `${rawUrl}#${chunk.sectionAnchor}` : rawUrl;
@@ -342,5 +369,46 @@ export class DefaultRAGPipeline implements RAGPipeline {
         console.warn('Background indexing failed:', error);
       }
     }, 100); // Small delay to not block the main response
+  }
+
+  /**
+   * Lazy validation: refresh any pages whose chunks are older than TTL.
+   * Runs in the background and does not block the response.
+   */
+  private triggerLazyValidation(chunks: Chunk[]): void {
+    const ttlDays = parseInt(process.env.CHUNK_TTL_DAYS || '7', 10);
+    if (Number.isNaN(ttlDays) || ttlDays <= 0) return; // disabled
+
+    const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
+    const stalePageIds = new Set<string>();
+
+    for (const ch of chunks) {
+      if (!ch.indexedAt) {
+        stalePageIds.add(ch.pageId);
+        continue;
+      }
+      const t = Date.parse(ch.indexedAt);
+      if (isNaN(t) || t < cutoffMs) {
+        stalePageIds.add(ch.pageId);
+      }
+    }
+
+    if (stalePageIds.size === 0) return;
+
+    setTimeout(async () => {
+      try {
+        console.log(`Lazy refresh: re-indexing ${stalePageIds.size} page(s) due to staleness`);
+        for (const pageId of stalePageIds) {
+          try {
+            const doc = await this.documentClient.getDocumentById(pageId);
+            await this.indexDocument(doc);
+          } catch (err) {
+            console.warn(`Lazy refresh failed for page ${pageId}:`, err);
+          }
+        }
+      } catch (error) {
+        console.warn('Lazy refresh batch failed:', error);
+      }
+    }, 50);
   }
 }

@@ -20,6 +20,7 @@ export interface Chunk {
   labels: string[];
   vector?: number[]; // optional until embedded
   url?: string; // optional source URL for citations
+  indexedAt?: string; // ISO8601 timestamp when stored in vector DB
 }
 
 export interface Citation {

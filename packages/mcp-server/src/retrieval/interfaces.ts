@@ -28,6 +28,7 @@ export interface Chunk {
   updatedAt: string;
   labels: string[];
   vector?: number[];
+  indexedAt?: string; // ISO8601 when stored in vector DB
 }
 
 export interface RagQuery {
@@ -76,4 +77,3 @@ export interface VectorStore {
 export interface Orchestrator {
   ragQuery(query: RagQuery): Promise<RagResponse>;
 }
-

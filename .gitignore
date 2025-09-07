@@ -59,6 +59,9 @@ data/
 bugger.db-shm
 bugger.db-wal
 
+### Vector Database
+lancedb/
+
 ### Misc
 logs/
 *.pid

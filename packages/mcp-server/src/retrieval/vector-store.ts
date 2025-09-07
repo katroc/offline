@@ -26,8 +26,10 @@ export class MockVectorStore implements VectorStore {
   }
 
   async upsertChunks(chunks: Chunk[]): Promise<void> {
+    const nowIso = new Date().toISOString();
     for (const chunk of chunks) {
-      this.chunks.set(chunk.id, chunk);
+      const enriched: Chunk = { ...chunk, indexedAt: nowIso };
+      this.chunks.set(enriched.id, enriched);
     }
   }
 
@@ -47,6 +49,18 @@ export class MockVectorStore implements VectorStore {
     if (filters.updatedAfter) {
       const cutoff = new Date(filters.updatedAfter);
       filtered = filtered.filter(chunk => new Date(chunk.updatedAt) >= cutoff);
+    }
+
+    // TTL filtering based on CHUNK_TTL_DAYS (default 7). Only filter out
+    // chunks explicitly older than cutoff; chunks with missing indexedAt pass through.
+    const ttlDays = parseInt(process.env.CHUNK_TTL_DAYS || '7', 10);
+    if (!Number.isNaN(ttlDays) && ttlDays > 0) {
+      const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
+      filtered = filtered.filter(chunk => {
+        if (!chunk.indexedAt) return true; // allow unknown age
+        const t = Date.parse(chunk.indexedAt);
+        return isNaN(t) ? true : t >= cutoffMs;
+      });
     }
 
     // Mock similarity scoring (random for now)
@@ -96,6 +110,7 @@ export class LanceDBVectorStore implements VectorStore {
 
     try {
       // Convert chunks to LanceDB format
+      const nowIso = new Date().toISOString();
       const records = chunks.map(chunk => ({
         id: chunk.id,
         page_id: chunk.pageId,
@@ -106,7 +121,9 @@ export class LanceDBVectorStore implements VectorStore {
         version: chunk.version,
         updated_at: chunk.updatedAt,
         labels: Array.isArray(chunk.labels) ? chunk.labels.join(',') : '', // Convert to comma-separated string
-        vector: Array.isArray(chunk.vector) ? chunk.vector : []
+        vector: Array.isArray(chunk.vector) ? chunk.vector : [],
+        url: chunk.url || '',
+        indexed_at: nowIso
       }));
 
       if (!this.table) {
@@ -146,6 +163,8 @@ export class LanceDBVectorStore implements VectorStore {
 
     try {
       let query = this.table.search(vector).limit(topK);
+      // Prefer cosine similarity if available
+      try { if (typeof query.metricType === 'function') query = query.metricType('cosine'); } catch {}
 
       // Apply filters
       const whereConditions: string[] = [];
@@ -153,9 +172,11 @@ export class LanceDBVectorStore implements VectorStore {
         whereConditions.push(`space = '${filters.space.replace(/'/g, "''")}'`);
       }
       if (filters.labels && filters.labels.length > 0) {
-        const labelConditions = filters.labels.map(label => 
-          `array_contains(labels, '${label.replace(/'/g, "''")}')`
-        ).join(' OR ');
+        // Labels are stored as a comma-separated string. Use LIKE for a pragmatic match.
+        const labelConditions = filters.labels.map(label => {
+          const safe = label.replace(/'/g, "''");
+          return `labels LIKE '%${safe}%'`;
+        }).join(' OR ');
         whereConditions.push(`(${labelConditions})`);
       }
       if (filters.updatedAfter) {
@@ -167,8 +188,9 @@ export class LanceDBVectorStore implements VectorStore {
       }
 
       const results = await query.toArray();
-      
-      return results.map((record: any) => ({
+
+      // Map to VectorSearchResult
+      const mapped: VectorSearchResult[] = results.map((record: any) => ({
         chunk: {
           id: record.id,
           pageId: record.page_id,
@@ -178,11 +200,22 @@ export class LanceDBVectorStore implements VectorStore {
           text: record.text,
           version: record.version,
           updatedAt: record.updated_at,
-          labels: record.labels ? record.labels.split(',').filter(Boolean) : [], // Convert back to array
-          vector: record.vector
+          labels: record.labels ? record.labels.split(',').filter(Boolean) : [],
+          vector: record.vector,
+          url: record.url,
+          indexedAt: record.indexed_at
         },
-        score: record._distance ? 1 - record._distance : 1 // Convert distance to similarity score
+        score: record._distance ? 1 - record._distance : 1
       }));
+
+      // TTL post-filtering to avoid schema issues on legacy tables
+      const ttlDays = parseInt(process.env.CHUNK_TTL_DAYS || '7', 10);
+      if (Number.isNaN(ttlDays) || ttlDays <= 0) return mapped;
+      const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
+      return mapped.filter(r => {
+        const t = r.chunk.indexedAt ? Date.parse(r.chunk.indexedAt) : NaN;
+        return isNaN(t) ? true : t >= cutoffMs;
+      });
     } catch (error) {
       console.error('Failed to search LanceDB:', error);
       return []; // Return empty results rather than throwing
