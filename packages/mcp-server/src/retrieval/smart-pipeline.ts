@@ -24,13 +24,39 @@ export class SmartRAGPipeline implements RAGPipeline {
   ) {}
 
   async retrieveForQuery(
-    query: string, 
+    queries: string | string[], 
     filters: Filters, 
     topK: number, 
     model?: string,
-    conversationId?: string
+    conversationId?: string,
+    intent?: { intent: string; confidence: number; normalizedQuery?: string }
   ): Promise<RetrievalResult> {
     const convKey = conversationId || 'global';
+    const variants = Array.isArray(queries) ? queries : [queries];
+    const maxFallbacks = Math.max(0, parseInt(process.env.MAX_FALLBACK_QUERIES || '3', 10) || 3);
+    const limited = variants.slice(0, 1 + maxFallbacks);
+    if (intent) {
+      console.log(`Smart Pipeline intent: ${intent.intent} (conf=${intent.confidence?.toFixed?.(2) ?? intent.confidence})`);
+    }
+
+    let lastResult: RetrievalResult = { chunks: [], citations: [] };
+    for (let i = 0; i < limited.length; i++) {
+      const q = limited[i];
+      console.log(`Smart RAG: Attempt ${i + 1}/${limited.length} with query: "${q}" (conv=${convKey})`);
+      const res = await this.retrieveSingleQuery(q, filters, topK, model, convKey);
+      if (res.chunks.length > 0) return res;
+      lastResult = res;
+    }
+    return lastResult;
+  }
+
+  private async retrieveSingleQuery(
+    query: string,
+    filters: Filters,
+    topK: number,
+    model: string | undefined,
+    convKey: string
+  ): Promise<RetrievalResult> {
     console.log(`Smart RAG Pipeline: Analyzing query "${query}" (conv=${convKey})`);
     
     // Add to per-conversation memory

@@ -106,6 +106,7 @@ export class LanceDBVectorStore implements VectorStore {
       try {
         this.table = await this.db.openTable(this.tableName);
         console.log(`Opened existing LanceDB table: ${this.tableName}`);
+        await this.ensureVectorIndex();
       } catch (err) {
         // Table may not exist yet; that's fine — it will be created on first upsert
       }
@@ -162,6 +163,8 @@ export class LanceDBVectorStore implements VectorStore {
           // Table doesn't exist, create it
           this.table = await this.db.createTable(this.tableName, records);
           console.log(`Created LanceDB table: ${this.tableName} with ${records.length} records`);
+          // Best-effort: create vector index for faster/more accurate ANN
+          await this.ensureVectorIndex();
         }
       }
       
@@ -214,6 +217,14 @@ export class LanceDBVectorStore implements VectorStore {
       let query = this.table.search(vector).limit(topK);
       // Prefer cosine similarity if available
       try { if (typeof query.metricType === 'function') query = query.metricType('cosine'); } catch {}
+
+      // Optional ANN tuning parameters (no-op if unsupported by current LanceDB)
+      const nprobes = Number(process.env.LANCEDB_NPROBES || 0);
+      const efSearch = Number(process.env.LANCEDB_EF_SEARCH || 0);
+      const refine = Number(process.env.LANCEDB_REFINE_FACTOR || 0);
+      try { if (nprobes > 0 && typeof (query as any).nprobes === 'function') query = (query as any).nprobes(nprobes); } catch {}
+      try { if (efSearch > 0 && typeof (query as any).efSearch === 'function') query = (query as any).efSearch(efSearch); } catch {}
+      try { if (refine > 0 && typeof (query as any).refineFactor === 'function') query = (query as any).refineFactor(refine); } catch {}
 
       // Apply filters
       const whereConditions: string[] = [];
@@ -313,5 +324,61 @@ export class LanceDBVectorStore implements VectorStore {
       // ignore
     }
     return { count, recent };
+  }
+
+  // Internal: best-effort vector index creation with sensible defaults.
+  // Safely no-ops if the current LanceDB version doesn’t support these APIs or the index already exists.
+  // Uses HNSW when available; falls back to IVF_PQ parameters otherwise.
+  private async ensureVectorIndex(): Promise<void> {
+    try {
+      const tbl: any = this.table;
+      if (!tbl || typeof tbl.listIndexes !== 'function' || typeof tbl.createIndex !== 'function') return;
+      const idxs = await tbl.listIndexes();
+      const hasVector = Array.isArray(idxs) && idxs.some((i: any) => String(i?.name || '').toLowerCase().includes('vector'));
+      if (hasVector) return;
+
+      const metric = (process.env.LANCEDB_METRIC || 'cosine').toLowerCase();
+      const preferHnsw = String(process.env.LANCEDB_USE_HNSW || 'true').toLowerCase() !== 'false';
+      const M = Number(process.env.LANCEDB_HNSW_M || 16);
+      const efc = Number(process.env.LANCEDB_HNSW_EF_CONSTRUCTION || 200);
+      const numParts = Number(process.env.LANCEDB_IVF_PARTITIONS || 256);
+      const pqSubs = Number(process.env.LANCEDB_PQ_SUBVECTORS || 96);
+
+      // Try HNSW first
+      if (preferHnsw) {
+        try {
+          await tbl.createIndex({
+            name: 'vector_hnsw',
+            column: 'vector',
+            type: 'HNSW',
+            metricType: metric,
+            hnswParams: { M, ef_construction: efc }
+          });
+          console.log('Created HNSW vector index on LanceDB table');
+          return;
+        } catch (e) {
+          // Fall through to IVF_PQ attempt
+          console.warn('HNSW index creation not supported or failed. Falling back to IVF_PQ. Error:', e instanceof Error ? e.message : String(e));
+        }
+      }
+
+      // Fallback: IVF_PQ
+      try {
+        await tbl.createIndex({
+          name: 'vector_ivfpq',
+          column: 'vector',
+          type: 'IVF_PQ',
+          metricType: metric,
+          ivfParams: { num_partitions: numParts },
+          pqParams: { num_sub_vectors: pqSubs }
+        });
+        console.log('Created IVF_PQ vector index on LanceDB table');
+      } catch (e2) {
+        console.warn('IVF_PQ index creation not supported or failed. Continuing without explicit index. Error:', e2 instanceof Error ? e2.message : String(e2));
+      }
+    } catch (err) {
+      // Don’t fail app startup for index issues
+      console.warn('Vector index setup skipped due to error:', err instanceof Error ? err.message : String(err));
+    }
   }
 }
