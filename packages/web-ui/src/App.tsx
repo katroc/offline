@@ -894,6 +894,26 @@ function App() {
             </button>
           )}
             </form>
+            
+            <div className="input-controls">
+              <label className="rag-bypass-toggle">
+                <input
+                  type="checkbox"
+                  checked={ragBypass}
+                  onChange={(e) => setRagBypass(e.target.checked)}
+                  className="toggle-checkbox"
+                />
+                <span className="toggle-label">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="toggle-icon">
+                    <path d="M9 12l2 2 4-4"/>
+                  </svg>
+                  {ragBypass ? 'AI Mode' : 'RAG Mode'}
+                </span>
+                <span className="toggle-description">
+                  {ragBypass ? 'Direct AI responses' : 'Document-grounded answers'}
+                </span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -937,7 +957,6 @@ function App() {
                     value={space}
                     onChange={(e) => setSpace(e.target.value)}
                     className="text-input"
-                    disabled={ragBypass}
                   />
                 </div>
 
@@ -953,7 +972,6 @@ function App() {
                     value={labels}
                     onChange={(e) => setLabels(e.target.value)}
                     className="text-input"
-                    disabled={ragBypass}
                   />
                 </div>
 
@@ -971,23 +989,9 @@ function App() {
                       value={topK}
                       onChange={(e) => setTopK(Number(e.target.value))}
                       className="range-input"
-                      disabled={ragBypass}
                     />
                     <span className="range-value">{topK}</span>
                   </div>
-                </div>
-
-                <div className="setting-group checkbox-group">
-                  <label htmlFor="rag-bypass-setting">
-                    <span>RAG Bypass Mode</span>
-                    <span className="setting-description">Skip document retrieval and answer directly using AI knowledge</span>
-                  </label>
-                  <input
-                    id="rag-bypass-setting"
-                    type="checkbox"
-                    checked={ragBypass}
-                    onChange={(e) => setRagBypass(e.target.checked)}
-                  />
                 </div>
 
               </div>
