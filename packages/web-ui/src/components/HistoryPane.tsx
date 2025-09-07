@@ -30,9 +30,11 @@ interface HistoryPaneProps {
   onDelete: (id: string) => void;
   onRename: (id: string, newTitle: string) => void;
   onTogglePin: (id: string) => void;
+  onDeleteAll?: () => void;
+  onDeleteAllRequest?: () => void;
 }
 
-export const HistoryPane: React.FC<HistoryPaneProps> = ({ items, activeId, onSelect, onNew, onDelete, onRename, onTogglePin }) => {
+export const HistoryPane: React.FC<HistoryPaneProps> = ({ items, activeId, onSelect, onNew, onDelete, onRename, onTogglePin, onDeleteAll, onDeleteAllRequest }) => {
   const formatDate = (ts: number) => new Date(ts).toLocaleString();
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -111,11 +113,34 @@ export const HistoryPane: React.FC<HistoryPaneProps> = ({ items, activeId, onSel
     <aside className="history-pane" aria-label="Conversations">
       <div className="history-header">
         <div className="history-title">Chats</div>
-        <button className="history-new" title="New conversation" aria-label="New conversation" onClick={onNew}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-        </button>
+        <div className="history-actions">
+          {items.length > 0 && (
+            <button
+              className="history-clear"
+              title="Delete all chats"
+              aria-label="Delete all chats"
+              onClick={() => {
+                if (typeof onDeleteAllRequest === 'function') {
+                  onDeleteAllRequest();
+                } else if (typeof onDeleteAll === 'function') {
+                  // Fallback to native confirm if no custom request handler provided
+                  if (confirm('Delete all conversations? This cannot be undone.')) {
+                    onDeleteAll();
+                  }
+                }
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14M10 11v6M14 11v6"/>
+              </svg>
+            </button>
+          )}
+          <button className="history-new" title="New conversation" aria-label="New conversation" onClick={onNew}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </button>
+        </div>
       </div>
       
       {items.length > 0 && (
@@ -246,4 +271,3 @@ export const HistoryPane: React.FC<HistoryPaneProps> = ({ items, activeId, onSel
 };
 
 export default HistoryPane;
-
