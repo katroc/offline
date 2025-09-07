@@ -105,14 +105,21 @@ export class SmartRAGPipeline implements RAGPipeline {
       }
 
       // Phase 4: Filter for high-relevance documents  
+      const smartThreshold = parseFloat(process.env.SMART_RAG_THRESHOLD || '0.3');
+      const allowAnswersQueryBypass = process.env.SMART_RAG_ALLOW_ANSWERS_BYPASS !== 'false';
+      
       const relevantAnalyses = analyses.filter(a => 
-        a.relevanceScore > 0.3 || a.answersQuery
+        a.relevanceScore > smartThreshold || (allowAnswersQueryBypass && a.answersQuery)
       );
 
+      console.log(`Smart RAG filtering: threshold=${smartThreshold}, allowAnswersQueryBypass=${allowAnswersQueryBypass}`);
+
       if (relevantAnalyses.length === 0) {
-        console.log('No highly relevant documents found, trying CQL fallback');
+        console.log(`No documents above Smart RAG threshold ${smartThreshold} found, trying CQL fallback`);
         return await this.cqlFallback(query, filters, topK, model);
       }
+
+      console.log(`Smart RAG found ${relevantAnalyses.length} documents above threshold ${smartThreshold}`);
 
       // Phase 5: Convert to chunks using extracted relevant sections
       const chunks = await this.analysesToChunks(query, relevantAnalyses, topK);

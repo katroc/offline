@@ -5,7 +5,7 @@ Fastify-based Node/TypeScript server that powers Cabin’s retrieval and chat. I
 Overview
 - Framework: Fastify
 - LLM: OpenAI-compatible API (LM Studio or Ollama with compatibility)
-- Retrieval: Default pipeline with Google embeddings + vector search; Smart pipeline with LLM ranking + chunking; LanceDB vector storage (mock fallback)
+- Retrieval: Default pipeline with Google embeddings + vector search; Smart pipeline with LLM ranking + chunking; LanceDB or Chroma vector storage (mock fallback)
 - Confluence: Live search/crawl via REST; can ingest pre-fetched pages
 
 Requirements
@@ -26,8 +26,12 @@ Environment
 - `LLM_EMBED_MODEL` — model id for embeddings (e.g., `text-embedding-embeddinggemma-300m-qat`)
 - `REQUEST_TIMEOUT_MS` — outbound timeout (default 15000)
 - `CONFLUENCE_BASE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN` — enable live Confluence
+- `VECTOR_STORE` — choose vector store: `lancedb` (default) or `chroma`
 - `LANCEDB_PATH` — path to LanceDB (default `./lancedb`)
-- `USE_REAL_VECTORDB` — `true` to use LanceDB vector storage, `false` for mock store
+- `CHROMA_HOST`, `CHROMA_PORT`, `CHROMA_SSL` — Chroma server connection (defaults: localhost:8000, ssl=false)
+- `CHROMA_COLLECTION` — Chroma collection name (default `confluence_chunks`)
+- `CHROMA_AUTH_PROVIDER`, `CHROMA_AUTH_CREDENTIALS` — optional Chroma authentication
+- `USE_REAL_VECTORDB` — `true` to use real vector storage, `false` for mock store
 - `USE_SMART_PIPELINE` — `false` to use default vector pipeline, `true` for LLM-based pipeline
 - `PREFER_LIVE_SEARCH` — `true` to prefer live search over local store
 - `RELEVANCE_THRESHOLD` — minimum similarity score for vector results (default `0.5`)

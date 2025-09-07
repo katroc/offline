@@ -6,7 +6,7 @@ import { ragQuery, ragQueryStream } from './orchestrator.js';
 import { chatCompletion, type ChatMessage } from './llm/chat.js';
 import { ConfluenceClient } from './sources/confluence.js';
 import { SimpleChunker } from './retrieval/chunker.js';
-import { LanceDBVectorStore } from './retrieval/vector-store.js';
+import { LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
 import { GoogleEmbedder } from './llm/google-embedder.js';
 import { fileURLToPath } from 'url';
 import path from 'node:path';
@@ -211,10 +211,33 @@ app.post('/admin/sync', async (req, reply) => {
       return reply.code(400).send({ error: 'Unable to list spaces and none provided' });
     }
   }
-  const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
-  const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
-  const vector = new LanceDBVectorStore({ dbPath: lanceDbPath, tableName: 'confluence_chunks' });
-  try { await vector.initialize(); } catch {}
+  // Choose vector store based on configuration
+  const vectorStoreType = process.env.VECTOR_STORE || 'lancedb';
+  let vector: LanceDBVectorStore | ChromaVectorStore;
+
+  if (vectorStoreType.toLowerCase() === 'chroma') {
+    vector = new ChromaVectorStore({
+      host: process.env.CHROMA_HOST,
+      port: process.env.CHROMA_PORT ? parseInt(process.env.CHROMA_PORT, 10) : undefined,
+      ssl: process.env.CHROMA_SSL === 'true',
+      collectionName: process.env.CHROMA_COLLECTION || 'confluence_chunks',
+      auth: process.env.CHROMA_AUTH_PROVIDER && process.env.CHROMA_AUTH_CREDENTIALS ? {
+        provider: process.env.CHROMA_AUTH_PROVIDER as 'token' | 'basic',
+        credentials: process.env.CHROMA_AUTH_CREDENTIALS
+      } : undefined
+    });
+  } else {
+    // Default to LanceDB
+    const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
+    const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
+    vector = new LanceDBVectorStore({ dbPath: lanceDbPath, tableName: 'confluence_chunks' });
+  }
+  try { 
+    await vector.initialize(); 
+  } catch (error) {
+    console.error('Failed to initialize vector store:', error);
+    throw error;
+  }
   const chunker = new SimpleChunker({ targetChunkSize: 800, overlap: 200, maxChunkSize: 1200 });
   const embedder = new GoogleEmbedder();
 
@@ -331,12 +354,39 @@ app.get('/admin/vector/stats', async (req, reply) => {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const repoRoot = path.resolve(__dirname, '../../../');
-    const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
-    const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
-    const vector = new LanceDBVectorStore({ dbPath: lanceDbPath, tableName: 'confluence_chunks' });
+    
+    // Choose vector store based on configuration
+    const vectorStoreType = process.env.VECTOR_STORE || 'lancedb';
+    let vector: LanceDBVectorStore | ChromaVectorStore;
+    let dbInfo: any = {};
+
+    if (vectorStoreType.toLowerCase() === 'chroma') {
+      vector = new ChromaVectorStore({
+        host: process.env.CHROMA_HOST,
+        port: process.env.CHROMA_PORT ? parseInt(process.env.CHROMA_PORT, 10) : undefined,
+        ssl: process.env.CHROMA_SSL === 'true',
+        collectionName: process.env.CHROMA_COLLECTION || 'confluence_chunks',
+        auth: process.env.CHROMA_AUTH_PROVIDER && process.env.CHROMA_AUTH_CREDENTIALS ? {
+          provider: process.env.CHROMA_AUTH_PROVIDER as 'token' | 'basic',
+          credentials: process.env.CHROMA_AUTH_CREDENTIALS
+        } : undefined
+      });
+      dbInfo = { 
+        type: 'chroma', 
+        collection: process.env.CHROMA_COLLECTION || 'confluence_chunks',
+        host: process.env.CHROMA_HOST || 'localhost',
+        port: process.env.CHROMA_PORT || 8000 
+      };
+    } else {
+      const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
+      const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
+      vector = new LanceDBVectorStore({ dbPath: lanceDbPath, tableName: 'confluence_chunks' });
+      dbInfo = { type: 'lancedb', table: 'confluence_chunks', dbPath: lanceDbPath };
+    }
+
     await vector.initialize();
     const stats = await (vector as any).getStats?.(5);
-    return reply.send({ ok: true, table: 'confluence_chunks', dbPath: lanceDbPath, stats: stats || null });
+    return reply.send({ ok: true, ...dbInfo, stats: stats || null });
   } catch (e) {
     return reply.code(500).send({ ok: false, error: e instanceof Error ? e.message : 'failed to read stats' });
   }
