@@ -47,6 +47,8 @@ export class DefaultRAGPipeline implements RAGPipeline {
         
         if (relevantResults.length > 0) {
           const chunks = relevantResults.map(result => result.chunk);
+          // Lazy staleness validation + background refresh for stale/missing indexedAt
+          this.triggerLazyValidation(chunks);
           const citations = this.chunksTocitations(chunks);
           return { chunks, citations };
         }
@@ -342,5 +344,46 @@ export class DefaultRAGPipeline implements RAGPipeline {
         console.warn('Background indexing failed:', error);
       }
     }, 100); // Small delay to not block the main response
+  }
+
+  /**
+   * Lazy validation: refresh any pages whose chunks are older than TTL.
+   * Runs in the background and does not block the response.
+   */
+  private triggerLazyValidation(chunks: Chunk[]): void {
+    const ttlDays = parseInt(process.env.CHUNK_TTL_DAYS || '7', 10);
+    if (Number.isNaN(ttlDays) || ttlDays <= 0) return; // disabled
+
+    const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
+    const stalePageIds = new Set<string>();
+
+    for (const ch of chunks) {
+      if (!ch.indexedAt) {
+        stalePageIds.add(ch.pageId);
+        continue;
+      }
+      const t = Date.parse(ch.indexedAt);
+      if (isNaN(t) || t < cutoffMs) {
+        stalePageIds.add(ch.pageId);
+      }
+    }
+
+    if (stalePageIds.size === 0) return;
+
+    setTimeout(async () => {
+      try {
+        console.log(`Lazy refresh: re-indexing ${stalePageIds.size} page(s) due to staleness`);
+        for (const pageId of stalePageIds) {
+          try {
+            const doc = await this.documentClient.getDocumentById(pageId);
+            await this.indexDocument(doc);
+          } catch (err) {
+            console.warn(`Lazy refresh failed for page ${pageId}:`, err);
+          }
+        }
+      } catch (error) {
+        console.warn('Lazy refresh batch failed:', error);
+      }
+    }, 50);
   }
 }

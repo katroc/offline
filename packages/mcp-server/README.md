@@ -31,6 +31,7 @@ Environment
 - `PREFER_LIVE_SEARCH` — `true` to prefer live search over local store
 - `RELEVANCE_THRESHOLD` — minimum similarity score for vector results (default `0.5`)
 - `ALLOW_GENERAL_KNOWLEDGE` — `false` to restrict to indexed knowledge only
+- `CHUNK_TTL_DAYS` — TTL in days for vector-store chunks (default `7`). Chunks older than this are filtered from vector results; stale pages are lazily re-indexed in the background.
 
 Endpoints
 - `GET /health` — server health
