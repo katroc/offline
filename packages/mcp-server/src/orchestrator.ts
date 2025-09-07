@@ -111,13 +111,55 @@ async function getRagPipeline(): Promise<DefaultRAGPipeline> {
 export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
   const useLlm = (process.env.LLM_BASE_URL || '').length > 0;
   const useRealRAG = process.env.CONFLUENCE_BASE_URL && process.env.CONFLUENCE_USERNAME;
+  const ragBypassEnabled = query.ragBypass || process.env.RAG_BYPASS_ENABLED === 'true';
   
   console.log('DEBUG: Environment check:', {
     CONFLUENCE_BASE_URL: process.env.CONFLUENCE_BASE_URL,
     CONFLUENCE_USERNAME: process.env.CONFLUENCE_USERNAME,
     useLlm,
-    useRealRAG
+    useRealRAG,
+    ragBypassEnabled: ragBypassEnabled,
+    queryRagBypass: query.ragBypass
   });
+
+  // RAG Bypass: Direct LLM interaction for general questions
+  if (ragBypassEnabled && useLlm) {
+    console.log('RAG bypass enabled - routing directly to LLM');
+    
+    const system: ChatMessage = {
+      role: 'system',
+      content: [
+        'You are a helpful AI assistant with broad knowledge across many topics.',
+        'Answer questions directly using your training knowledge.',
+        'Format your responses clearly using markdown with appropriate headings, lists, and code blocks.',
+        'If you are unsure about something specific, acknowledge the uncertainty.',
+        'For technical questions, provide practical examples when helpful.',
+        'Use **bold** for emphasis and `code` formatting for technical terms.',
+        'Structure your response based on the question type with clear sections when appropriate.'
+      ].join(' ')
+    };
+
+    const user: ChatMessage = {
+      role: 'user',
+      content: query.question
+    };
+
+    try {
+      const answer = await chatCompletion([system, user], { model: query.model });
+      return { 
+        answer, 
+        citations: [],
+        displayCitations: [],
+        citationIndexMap: []
+      };
+    } catch (err) {
+      console.warn('LLM call failed in bypass mode:', err);
+      return { 
+        answer: `Failed to process question: ${query.question}. Error: ${err instanceof Error ? err.message : 'Unknown error'}`, 
+        citations: [] 
+      };
+    }
+  }
 
   // Use mock citations if Confluence not configured
   if (!useRealRAG) {
@@ -295,8 +337,47 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
 export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ type: 'citations' | 'content' | 'done', citations?: any[], content?: string }, void, unknown> {
   const useLlm = (process.env.LLM_BASE_URL || '').length > 0;
   const useRealRAG = process.env.CONFLUENCE_BASE_URL && process.env.CONFLUENCE_USERNAME;
+  const ragBypassEnabled = query.ragBypass || process.env.RAG_BYPASS_ENABLED === 'true';
   
   let citations: any[] = [];
+
+  // RAG Bypass: Direct LLM interaction for general questions
+  if (ragBypassEnabled && useLlm) {
+    console.log('RAG bypass enabled - streaming directly from LLM');
+    
+    // Send empty citations first
+    yield { type: 'citations', citations: { original: [], display: [], indexMap: [] } } as any;
+    
+    const system: ChatMessage = {
+      role: 'system',
+      content: [
+        'You are a helpful AI assistant with broad knowledge across many topics.',
+        'Answer questions directly using your training knowledge.',
+        'Format your responses clearly using markdown with appropriate headings, lists, and code blocks.',
+        'If you are unsure about something specific, acknowledge the uncertainty.',
+        'For technical questions, provide practical examples when helpful.',
+        'Use **bold** for emphasis and `code` formatting for technical terms.',
+        'Structure your response based on the question type with clear sections when appropriate.'
+      ].join(' ')
+    };
+
+    const user: ChatMessage = {
+      role: 'user',
+      content: query.question
+    };
+
+    try {
+      for await (const chunk of chatCompletionStream([system, user], { model: query.model })) {
+        yield { type: 'content', content: chunk };
+      }
+      yield { type: 'done' };
+    } catch (err) {
+      console.warn('LLM streaming call failed in bypass mode:', err);
+      yield { type: 'content', content: `Failed to process question: ${query.question}. Error: ${err instanceof Error ? err.message : 'Unknown error'}` };
+      yield { type: 'done' };
+    }
+    return;
+  }
 
   // Use mock citations if Confluence not configured
   if (!useRealRAG) {

@@ -113,6 +113,7 @@ function App() {
   };
   const [topK, setTopK] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:topK')) || 5 : 5));
   const [temperature, setTemperature] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:temperature')) || 0.7 : 0.7));
+  const [ragBypass, setRagBypass] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('settings:ragBypass') === 'true' : false));
   // Crawler config state (admin)
   const [crawlerAllSpaces, setCrawlerAllSpaces] = useState(true);
   const [crawlerSpaces, setCrawlerSpaces] = useState('');
@@ -208,6 +209,11 @@ function App() {
     if (typeof window === 'undefined') return;
     localStorage.setItem('settings:temperature', String(temperature));
   }, [temperature]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('settings:ragBypass', String(ragBypass));
+  }, [ragBypass]);
 
 
   // Load crawler config when settings drawer opens
@@ -551,6 +557,7 @@ function App() {
         topK: topK,
         model: selectedModel || undefined,
         conversationId: (current?.id || activeId) || undefined,
+        ragBypass: ragBypass || undefined,
       };
 
       const response = await fetch('/rag/query', {
@@ -930,6 +937,7 @@ function App() {
                     value={space}
                     onChange={(e) => setSpace(e.target.value)}
                     className="text-input"
+                    disabled={ragBypass}
                   />
                 </div>
 
@@ -945,6 +953,7 @@ function App() {
                     value={labels}
                     onChange={(e) => setLabels(e.target.value)}
                     className="text-input"
+                    disabled={ragBypass}
                   />
                 </div>
 
@@ -962,9 +971,23 @@ function App() {
                       value={topK}
                       onChange={(e) => setTopK(Number(e.target.value))}
                       className="range-input"
+                      disabled={ragBypass}
                     />
                     <span className="range-value">{topK}</span>
                   </div>
+                </div>
+
+                <div className="setting-group checkbox-group">
+                  <label htmlFor="rag-bypass-setting">
+                    <span>RAG Bypass Mode</span>
+                    <span className="setting-description">Skip document retrieval and answer directly using AI knowledge</span>
+                  </label>
+                  <input
+                    id="rag-bypass-setting"
+                    type="checkbox"
+                    checked={ragBypass}
+                    onChange={(e) => setRagBypass(e.target.checked)}
+                  />
                 </div>
 
               </div>

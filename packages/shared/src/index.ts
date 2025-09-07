@@ -39,6 +39,7 @@ export interface RagQuery {
   topK?: number;
   model?: string; // Optional model override
   conversationId?: string; // Optional conversation/thread identifier
+  ragBypass?: boolean; // Optional flag to bypass RAG and use direct LLM interaction
 }
 
 export interface RagResponse {
