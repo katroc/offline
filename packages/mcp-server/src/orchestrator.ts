@@ -172,11 +172,22 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
     if (useSmartPipeline) {
       console.log('Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
     } else {
       console.log('Using traditional pipeline');
       const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+      
+      // If traditional pipeline returns no results, try Smart RAG as fallback
+      if (retrieval.chunks.length === 0) {
+        console.log('Traditional pipeline returned no results, trying Smart RAG as fallback');
+        const smartPipe = await getSmartPipeline();
+        const smartRetrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+        if (smartRetrieval.chunks.length > 0) {
+          console.log(`Smart RAG fallback found ${smartRetrieval.chunks.length} relevant results`);
+          retrieval = smartRetrieval;
+        }
+      }
     }
 
     if (!useLlm) {
@@ -319,11 +330,22 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
     if (useSmartPipeline) {
       console.log('Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
     } else {
       console.log('Using traditional pipeline');
       const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+      
+      // If traditional pipeline returns no results, try Smart RAG as fallback
+      if (retrieval.chunks.length === 0) {
+        console.log('Traditional pipeline returned no results, trying Smart RAG as fallback');
+        const smartPipe = await getSmartPipeline();
+        const smartRetrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId, query.relevanceThreshold);
+        if (smartRetrieval.chunks.length > 0) {
+          console.log(`Smart RAG fallback found ${smartRetrieval.chunks.length} relevant results`);
+          retrieval = smartRetrieval;
+        }
+      }
     }
 
     citations = retrieval.citations;
