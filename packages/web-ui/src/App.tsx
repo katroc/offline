@@ -120,9 +120,15 @@ function App() {
   const [crawlerMaxPages, setCrawlerMaxPages] = useState(200);
   const [crawlerConcurrency, setCrawlerConcurrency] = useState(4);
   const [availableSpaces, setAvailableSpaces] = useState<string[]>([]);
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000); // Auto-hide after 3 seconds
   };
 
   useEffect(() => {
@@ -203,6 +209,7 @@ function App() {
     localStorage.setItem('settings:temperature', String(temperature));
   }, [temperature]);
 
+
   // Load crawler config when settings drawer opens
   useEffect(() => {
     if (!settingsOpen) return;
@@ -232,34 +239,50 @@ function App() {
   };
 
   const saveCrawlerConfig = async () => {
-    const body = {
-      allSpaces: crawlerAllSpaces,
-      spaces: crawlerAllSpaces ? [] : crawlerSpaces.split(',').map(s => s.trim()).filter(Boolean),
-      pageSize: crawlerPageSize,
-      maxPagesPerTick: crawlerMaxPages,
-      concurrency: crawlerConcurrency
-    };
-    const res = await fetch('/admin/crawler/config', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) alert('Failed to save crawler config');
+    try {
+      const body = {
+        allSpaces: crawlerAllSpaces,
+        spaces: crawlerAllSpaces ? [] : crawlerSpaces.split(',').map(s => s.trim()).filter(Boolean),
+        pageSize: crawlerPageSize,
+        maxPagesPerTick: crawlerMaxPages,
+        concurrency: crawlerConcurrency
+      };
+      const res = await fetch('/admin/crawler/config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        showNotification('Crawler configuration saved successfully!', 'success');
+      } else {
+        showNotification('Failed to save crawler configuration', 'error');
+      }
+    } catch (error) {
+      showNotification('Error saving crawler configuration', 'error');
+    }
   };
 
   const triggerSync = async () => {
-    const body: any = {};
-    if (!crawlerAllSpaces) {
-      body.spaces = crawlerSpaces.split(',').map((s: string) => s.trim()).filter(Boolean);
+    try {
+      const body: any = {};
+      if (!crawlerAllSpaces) {
+        body.spaces = crawlerSpaces.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+      body.pageSize = crawlerPageSize;
+      body.maxPages = crawlerMaxPages;
+      const res = await fetch('/admin/sync', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        showNotification('Sync started successfully! This may take a few moments to complete.', 'info');
+      } else {
+        showNotification('Failed to start sync', 'error');
+      }
+    } catch (error) {
+      showNotification('Error starting sync', 'error');
     }
-    body.pageSize = crawlerPageSize;
-    body.maxPages = crawlerMaxPages;
-    const res = await fetch('/admin/sync', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) alert('Sync failed');
   };
 
   // Check server health and connection status
@@ -527,7 +550,7 @@ function App() {
         labels: labels ? labels.split(',').map(l => l.trim()) : undefined,
         topK: topK,
         model: selectedModel || undefined,
-        conversationId: (current?.id || activeId) || undefined
+        conversationId: (current?.id || activeId) || undefined,
       };
 
       const response = await fetch('/rag/query', {
@@ -892,26 +915,9 @@ function App() {
             </div>
             
             <div className="settings-content">
+              {/* Query Settings - Most relevant for users */}
               <div className="settings-section">
-                <div className="setting-group">
-                  <label htmlFor="topK-setting">
-                    <span>Documents to retrieve (topK)</span>
-                    <span className="setting-description">Number of relevant documents to find</span>
-                  </label>
-                  <div className="range-input-group">
-                    <input
-                      id="topK-setting"
-                      type="range"
-                      min="1"
-                      max="20"
-                      value={topK}
-                      onChange={(e) => setTopK(Number(e.target.value))}
-                      className="range-input"
-                    />
-                    <span className="range-value">{topK}</span>
-                  </div>
-                </div>
-
+                <h3>Query Settings</h3>
                 <div className="setting-group">
                   <label htmlFor="space-setting">
                     <span>Space filter</span>
@@ -941,13 +947,35 @@ function App() {
                     className="text-input"
                   />
                 </div>
+
+                <div className="setting-group">
+                  <label htmlFor="topK-setting">
+                    <span>Documents to retrieve</span>
+                    <span className="setting-description">Number of relevant documents to find for each query</span>
+                  </label>
+                  <div className="range-input-group">
+                    <input
+                      id="topK-setting"
+                      type="range"
+                      min="1"
+                      max="20"
+                      value={topK}
+                      onChange={(e) => setTopK(Number(e.target.value))}
+                      className="range-input"
+                    />
+                    <span className="range-value">{topK}</span>
+                  </div>
+                </div>
+
               </div>
 
+              {/* Model Settings */}
               <div className="settings-section">
+                <h3>Model Settings</h3>
                 <div className="setting-group">
                   <label htmlFor="model-setting">
-                    <span>Model</span>
-                    <span className="setting-description">Choose the language model to use</span>
+                    <span>Language Model</span>
+                    <span className="setting-description">Choose the AI model for generating responses</span>
                   </label>
                   <select
                     id="model-setting"
@@ -984,13 +1012,13 @@ function App() {
                 </div>
               </div>
 
-              {/* Crawler Settings */}
+              {/* Crawler Settings - Data indexing configuration */}
               <div className="settings-section">
-                <h3>Crawler</h3>
-                <div className="setting-group">
+                <h3>Crawler Settings</h3>
+                <div className="setting-group checkbox-group">
                   <label htmlFor="crawler-allspaces">
                     <span>Crawl all spaces</span>
-                    <span className="setting-description">If enabled, ignores the spaces list and crawls all spaces</span>
+                    <span className="setting-description">Index all available Confluence spaces</span>
                   </label>
                   <input
                     id="crawler-allspaces"
@@ -1001,20 +1029,20 @@ function App() {
                 </div>
                 <div className="setting-group">
                   <label htmlFor="crawler-spaces">
-                    <span>Spaces</span>
-                    <span className="setting-description">Comma-separated list of space keys</span>
+                    <span>Specific spaces to crawl</span>
+                    <span className="setting-description">Comma-separated list of space keys (only when not crawling all)</span>
                   </label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input
                       id="crawler-spaces"
                       type="text"
-                      placeholder="e.g., ENG,OPS"
+                      placeholder="e.g., ENG,OPS,DOCS"
                       value={crawlerSpaces}
                       onChange={(e) => setCrawlerSpaces(e.target.value)}
                       className="text-input"
                       disabled={crawlerAllSpaces}
                     />
-                    <button className="header-button" type="button" onClick={refreshSpaces} title="Fetch spaces" aria-label="Fetch spaces">
+                    <button className="header-button" type="button" onClick={refreshSpaces} title="Fetch available spaces" aria-label="Fetch available spaces">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                         <polyline points="23 4 23 10 17 10"/>
                         <polyline points="1 20 1 14 7 14"/>
@@ -1023,13 +1051,13 @@ function App() {
                     </button>
                   </div>
                   {availableSpaces.length > 0 && (
-                    <div className="setting-description">Available: {availableSpaces.join(', ')}</div>
+                    <div className="setting-description">Available spaces: {availableSpaces.join(', ')}</div>
                   )}
                 </div>
                 <div className="setting-group">
                   <label htmlFor="crawler-pagesize">
-                    <span>Page size</span>
-                    <span className="setting-description">Items per Confluence request (1–100)</span>
+                    <span>Batch size</span>
+                    <span className="setting-description">Number of pages to fetch per API request (1-100)</span>
                   </label>
                   <input
                     id="crawler-pagesize"
@@ -1043,8 +1071,8 @@ function App() {
                 </div>
                 <div className="setting-group">
                   <label htmlFor="crawler-maxpages">
-                    <span>Max pages per run</span>
-                    <span className="setting-description">Upper bound processed per sync trigger</span>
+                    <span>Max pages per sync</span>
+                    <span className="setting-description">Maximum number of pages to process in a single sync operation</span>
                   </label>
                   <input
                     id="crawler-maxpages"
@@ -1057,8 +1085,8 @@ function App() {
                 </div>
                 <div className="setting-group">
                   <label htmlFor="crawler-concurrency">
-                    <span>Concurrency</span>
-                    <span className="setting-description">Parallel page indexing per process</span>
+                    <span>Processing threads</span>
+                    <span className="setting-description">Number of pages to process simultaneously (1-64)</span>
                   </label>
                   <input
                     id="crawler-concurrency"
@@ -1070,17 +1098,42 @@ function App() {
                     className="text-input"
                   />
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="header-button" type="button" onClick={saveCrawlerConfig} title="Save crawler config" aria-label="Save crawler config">
+                <div className="settings-action-buttons">
+                  <button className="settings-action-button" type="button" onClick={saveCrawlerConfig} title="Save crawler config" aria-label="Save crawler config">
                     Save
                   </button>
-                  <button className="header-button" type="button" onClick={triggerSync} title="Sync now" aria-label="Sync now">
+                  <button className="settings-action-button secondary" type="button" onClick={triggerSync} title="Sync now" aria-label="Sync now">
                     Sync Now
                   </button>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`notification-toast ${notification.type}`}>
+          {notification.type === 'success' && (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="20,6 9,17 4,12"/>
+            </svg>
+          )}
+          {notification.type === 'error' && (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+          )}
+          {notification.type === 'info' && (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 16v-4m0-4h.01"/>
+            </svg>
+          )}
+          {notification.message}
         </div>
       )}
 

@@ -531,6 +531,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
         ))}
       </div>
 
+
       {/* Citations section - show referenced citations, fallback to all if none referenced */}
       {referencedCitations.length > 0 && (
         <div className="citations-section">

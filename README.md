@@ -159,6 +159,7 @@ curl -X POST http://localhost:8787/rag/query \
 | `LANCEDB_PATH` | Vector database path | `./data/lancedb` | No |
 | `USE_REAL_VECTORDB` | Enable LanceDB | `true` | No |
 | `USE_SMART_PIPELINE` | Enable smart RAG pipeline | `true` | No |
+| `RELEVANCE_THRESHOLD` | Minimum relevance score for sources (0-1) | `0.2` | No |
 
 *Required for full functionality. Without LLM config, returns mock responses.
 
@@ -176,6 +177,9 @@ CONFLUENCE_API_TOKEN=your-api-token
 # Server Configuration
 MCP_PORT=8787
 MCP_HOST=127.0.0.1
+
+# RAG Configuration
+RELEVANCE_THRESHOLD=0.2    # Higher values = more selective sources
 ```
 
 ## 🛠️ Development Workflow
