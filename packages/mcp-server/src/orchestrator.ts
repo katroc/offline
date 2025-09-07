@@ -156,11 +156,11 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
     if (useSmartPipeline) {
       console.log('Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model);
+      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
     } else {
       console.log('Using traditional pipeline');
       const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model);
+      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
     }
 
     if (!useLlm) {
@@ -295,11 +295,11 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
     if (useSmartPipeline) {
       console.log('Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model);
+      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
     } else {
       console.log('Using traditional pipeline');
       const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model);
+      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
     }
 
     citations = retrieval.citations;

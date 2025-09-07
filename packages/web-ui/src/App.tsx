@@ -380,7 +380,8 @@ function App() {
         space: space || undefined,
         labels: labels ? labels.split(',').map(l => l.trim()) : undefined,
         topK: topK,
-        model: selectedModel || undefined
+        model: selectedModel || undefined,
+        conversationId: (current?.id || activeId) || undefined
       };
 
       const response = await fetch('/rag/query', {
