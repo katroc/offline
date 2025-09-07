@@ -4,6 +4,14 @@ import { generateRequestId, logRequestStart, logRequestEnd, logError } from './l
 import { validateRagQuery } from './validation.js';
 import { ragQuery, ragQueryStream } from './orchestrator.js';
 import { chatCompletion, type ChatMessage } from './llm/chat.js';
+import { ConfluenceClient } from './sources/confluence.js';
+import { SimpleChunker } from './retrieval/chunker.js';
+import { LanceDBVectorStore } from './retrieval/vector-store.js';
+import { GoogleEmbedder } from './llm/google-embedder.js';
+import { fileURLToPath } from 'url';
+import path from 'node:path';
+import { CrawlerConfigStore } from './ingest/config-store.js';
+import { RateLimiter } from './ingest/utils.js';
 
 const port = Number(process.env.MCP_PORT || 8787);
 const host = String(process.env.MCP_HOST || '127.0.0.1');
@@ -154,6 +162,183 @@ app.post('/rag/stream', async (req, reply) => {
     const reqId = (req as any).reqId as string | undefined;
     logError({ reqId, method: req.method, url: req.url, err });
     return reply.code(400).send({ error: 'invalid JSON body' });
+  }
+});
+
+// --- Admin endpoints (minimal) ---
+function isAuthorized(req: any): boolean {
+  const key = process.env.ADMIN_API_KEY || '';
+  // If no key configured, treat as public (optional API key)
+  if (!key) return true;
+  const hdr = req.headers['x-api-key'] || req.headers['authorization'];
+  if (!hdr) return false;
+  if (typeof hdr === 'string' && hdr.startsWith('Bearer ')) {
+    return hdr.slice(7).trim() === key;
+  }
+  return hdr === key;
+}
+
+app.post('/admin/sync', async (req, reply) => {
+  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+
+  const body = (req.body as any) || {};
+  let spaces: string[] = [];
+  if (Array.isArray(body.spaces) && body.spaces.length > 0) {
+    spaces = body.spaces;
+  } else {
+    const raw = (process.env.CRAWL_SPACES || '').trim();
+    if (raw && raw.toLowerCase() !== 'null' && raw.toLowerCase() !== 'undefined') {
+      spaces = raw.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+  }
+
+  // Fire-and-forget: run a lightweight in-process batch using the same pipeline pieces
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const repoRoot = path.resolve(__dirname, '../../../');
+
+  const confluence = new ConfluenceClient({
+    baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
+    username: process.env.CONFLUENCE_USERNAME || '',
+    apiToken: process.env.CONFLUENCE_API_TOKEN || ''
+  });
+  const minIntervalMs = Math.max(0, parseInt(String(process.env.CONFLUENCE_MIN_INTERVAL_MS || 0), 10) || 0);
+  const rl = new RateLimiter(minIntervalMs);
+  if (spaces.length === 0) {
+    try {
+      spaces = await confluence.listAllSpaceKeys();
+    } catch (e) {
+      return reply.code(400).send({ error: 'Unable to list spaces and none provided' });
+    }
+  }
+  const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
+  const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
+  const vector = new LanceDBVectorStore({ dbPath: lanceDbPath, tableName: 'confluence_chunks' });
+  try { await vector.initialize(); } catch {}
+  const chunker = new SimpleChunker({ targetChunkSize: 800, overlap: 200, maxChunkSize: 1200 });
+  const embedder = new GoogleEmbedder();
+
+  const pageSize = Math.max(1, Math.min(100, Number(body.pageSize ?? process.env.CRAWL_PAGE_SIZE ?? 50)));
+  const maxPages = Math.max(1, Number(body.maxPages ?? process.env.CRAWL_MAX_PAGES_PER_TICK ?? 100));
+
+  setTimeout(async () => {
+    try {
+      for (const space of spaces) {
+        let start = 0;
+        let processed = 0;
+        while (processed < maxPages) {
+          await rl.waitTurn();
+          const resp = await confluence.listPagesBySpace(space, start, pageSize);
+          if (!resp.documents || resp.documents.length === 0) break;
+          for (const d of resp.documents) {
+            if (processed >= maxPages) break;
+            processed++;
+            try {
+              await rl.waitTurn();
+              const doc = await confluence.getDocumentById(d.id);
+              const page = { id: doc.id, title: doc.title, spaceKey: doc.spaceKey, version: doc.version, labels: doc.labels, updatedAt: doc.updatedAt, url: doc.url };
+              const chunks = await chunker.chunkDocument(page, doc.content);
+              if (chunks.length === 0) continue;
+              const texts = chunks.map(c => c.text);
+              const batchSize = Math.max(1, parseInt(String(process.env.EMBED_BATCH_SIZE || 16), 10) || 16);
+              const delayMs = Math.max(0, parseInt(String(process.env.EMBED_DELAY_MS || 0), 10) || 0);
+              const vectors: number[][] = [];
+              for (let i = 0; i < texts.length; i += batchSize) {
+                const slice = texts.slice(i, i + batchSize);
+                const res = await embedder.embed(slice);
+                vectors.push(...res);
+                if (delayMs > 0 && i + batchSize < texts.length) await new Promise(r => setTimeout(r, delayMs));
+              }
+              for (let i = 0; i < chunks.length; i++) chunks[i].vector = vectors[i];
+              await vector.upsertChunks(chunks);
+            } catch (e) {
+              console.warn('admin sync: failed page', d.id, e);
+            }
+          }
+          start = resp.start + resp.limit;
+          if (resp.documents.length < pageSize) break;
+        }
+      }
+      console.log('admin sync: completed');
+    } catch (e) {
+      console.warn('admin sync: error', e);
+    }
+  }, 10);
+
+  return reply.send({ ok: true, spaces, pageSize, maxPages });
+});
+
+// Get available Confluence spaces (for UI selection)
+app.get('/admin/confluence/spaces', async (req, reply) => {
+  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  try {
+    const client = new ConfluenceClient({
+      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
+      username: process.env.CONFLUENCE_USERNAME || '',
+      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
+    });
+    const keys = await client.listAllSpaceKeys();
+    return reply.send({ spaces: keys });
+  } catch (e) {
+    return reply.code(502).send({ error: 'failed to list spaces' });
+  }
+});
+
+// Get crawler config (JSON-backed)
+app.get('/admin/crawler/config', async (req, reply) => {
+  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const repoRoot = path.resolve(__dirname, '../../../');
+  const store = new CrawlerConfigStore(repoRoot);
+  try {
+    const cfg = await store.load();
+    return reply.send(cfg);
+  } catch (e) {
+    return reply.code(500).send({ error: 'failed to load config' });
+  }
+});
+
+// Update crawler config (JSON-backed)
+app.put('/admin/crawler/config', async (req, reply) => {
+  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const repoRoot = path.resolve(__dirname, '../../../');
+  const store = new CrawlerConfigStore(repoRoot);
+  try {
+    const body = (req.body as any) || {};
+    const current = await store.load();
+    const next = store.validate({
+      allSpaces: typeof body.allSpaces === 'boolean' ? body.allSpaces : current.allSpaces,
+      spaces: Array.isArray(body.spaces) ? body.spaces : current.spaces,
+      pageSize: body.pageSize ?? current.pageSize,
+      maxPagesPerTick: body.maxPagesPerTick ?? current.maxPagesPerTick,
+      concurrency: body.concurrency ?? current.concurrency,
+      cron: body.cron ?? current.cron
+    });
+    await store.save(next);
+    return reply.send(next);
+  } catch (e) {
+    return reply.code(400).send({ error: 'invalid config' });
+  }
+});
+
+// Vector store stats (diagnostics): row count and recent indexed_at
+app.get('/admin/vector/stats', async (req, reply) => {
+  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const repoRoot = path.resolve(__dirname, '../../../');
+    const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
+    const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
+    const vector = new LanceDBVectorStore({ dbPath: lanceDbPath, tableName: 'confluence_chunks' });
+    await vector.initialize();
+    const stats = await (vector as any).getStats?.(5);
+    return reply.send({ ok: true, table: 'confluence_chunks', dbPath: lanceDbPath, stats: stats || null });
+  } catch (e) {
+    return reply.code(500).send({ ok: false, error: e instanceof Error ? e.message : 'failed to read stats' });
   }
 });
 

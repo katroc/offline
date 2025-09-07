@@ -89,6 +89,9 @@ export class LanceDBVectorStore implements VectorStore {
   private db: any = null;
   private table: any = null;
   private readonly tableName: string;
+  private omitUrlField = false;
+  private omitIndexedAtField = false;
+  private warnedSchemaOnce = false;
 
   constructor(private config: LanceDBConfig) {
     this.tableName = config.tableName || 'confluence_chunks';
@@ -99,9 +102,25 @@ export class LanceDBVectorStore implements VectorStore {
       const lancedb = await import('@lancedb/lancedb');
       this.db = await lancedb.connect(this.config.dbPath);
       console.log(`LanceDB initialized successfully at: ${this.config.dbPath}`);
+      // Eagerly open existing table if present to enable immediate search
+      try {
+        this.table = await this.db.openTable(this.tableName);
+        console.log(`Opened existing LanceDB table: ${this.tableName}`);
+      } catch (err) {
+        // Table may not exist yet; that's fine — it will be created on first upsert
+      }
     } catch (error) {
       console.error('Failed to initialize LanceDB:', error);
       throw new Error(`LanceDB initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async ensureTable(): Promise<void> {
+    if (this.table) return;
+    try {
+      this.table = await this.db.openTable(this.tableName);
+    } catch {
+      // no table yet
     }
   }
 
@@ -111,7 +130,7 @@ export class LanceDBVectorStore implements VectorStore {
     try {
       // Convert chunks to LanceDB format
       const nowIso = new Date().toISOString();
-      const records = chunks.map(chunk => ({
+      const recordsRaw = chunks.map(chunk => ({
         id: chunk.id,
         page_id: chunk.pageId,
         space: chunk.space || '',
@@ -125,6 +144,14 @@ export class LanceDBVectorStore implements VectorStore {
         url: chunk.url || '',
         indexed_at: nowIso
       }));
+
+      const sanitize = (items: any[]) => items.map(r => {
+        const copy: any = { ...r };
+        if (this.omitUrlField) delete copy.url;
+        if (this.omitIndexedAtField) delete copy.indexed_at;
+        return copy;
+      });
+      let records = sanitize(recordsRaw);
 
       if (!this.table) {
         // Try to open existing table first, create if doesn't exist
@@ -145,8 +172,27 @@ export class LanceDBVectorStore implements VectorStore {
           await this.table.delete(`page_id = '${pageId}'`);
         }
         
-        // Add new records
-        await this.table.add(records);
+        // Add new records, aligning to existing schema if necessary
+        try {
+          await this.table.add(records);
+        } catch (err: any) {
+          const msg = String(err?.message || err);
+          const strict = String(process.env.LANCEDB_STRICT_SCHEMA || '').toLowerCase() === 'true';
+          if (!/Found field not in schema/i.test(msg) || strict) throw err;
+
+          // Graceful downgrade: remember and drop unknown fields for subsequent writes
+          const fieldRegex = /Found field not in schema:\s*(\w+)/i;
+          const m = fieldRegex.exec(msg);
+          const missing = m && m[1] ? m[1] : '';
+          if (!this.warnedSchemaOnce) {
+            console.warn('LanceDB schema mismatch detected; enabling compatibility mode. Missing field:', missing || 'unknown');
+            this.warnedSchemaOnce = true;
+          }
+          if (missing.toLowerCase() === 'url') this.omitUrlField = true;
+          if (missing.toLowerCase() === 'indexed_at') this.omitIndexedAtField = true;
+          records = sanitize(recordsRaw);
+          await this.table.add(records);
+        }
         console.log(`Added ${records.length} records to LanceDB table: ${this.tableName}`);
       }
     } catch (error) {
@@ -156,6 +202,9 @@ export class LanceDBVectorStore implements VectorStore {
   }
 
   async searchSimilar(vector: number[], filters: Filters, topK: number): Promise<VectorSearchResult[]> {
+    if (!this.table) {
+      await this.ensureTable();
+    }
     if (!this.table) {
       console.warn('LanceDB table not initialized, returning empty results');
       return [];
@@ -200,10 +249,10 @@ export class LanceDBVectorStore implements VectorStore {
           text: record.text,
           version: record.version,
           updatedAt: record.updated_at,
-          labels: record.labels ? record.labels.split(',').filter(Boolean) : [],
+          labels: record.labels ? String(record.labels).split(',').filter(Boolean) : [],
           vector: record.vector,
-          url: record.url,
-          indexedAt: record.indexed_at
+          url: record.url || undefined,
+          indexedAt: record.indexed_at || undefined
         },
         score: record._distance ? 1 - record._distance : 1
       }));
@@ -235,5 +284,34 @@ export class LanceDBVectorStore implements VectorStore {
       console.error(`Failed to delete chunks for page ${pageId}:`, error);
       throw new Error(`LanceDB delete failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  // Best-effort stats for diagnostics (dev convenience).
+  async getStats(limit = 5): Promise<{ count: number | null; recent: Array<{ id: string; page_id: string; title?: string; indexed_at?: string }> }> {
+    await this.ensureTable();
+    if (!this.table) return { count: 0, recent: [] };
+    let count: number | null = null;
+    try {
+      if (typeof this.table.countRows === 'function') {
+        count = await this.table.countRows();
+      }
+    } catch {
+      count = null;
+    }
+    let recent: Array<{ id: string; page_id: string; title?: string; indexed_at?: string }> = [];
+    try {
+      // Warning: toArray() can be heavy for large tables; acceptable for dev diagnostics.
+      const arr: any[] = await this.table.toArray();
+      arr.sort((a, b) => {
+        const ta = Date.parse(a.indexed_at || '');
+        const tb = Date.parse(b.indexed_at || '');
+        return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+      });
+      recent = arr.slice(0, limit).map(r => ({ id: r.id, page_id: r.page_id, title: r.title, indexed_at: r.indexed_at }));
+      if (count === null) count = arr.length;
+    } catch {
+      // ignore
+    }
+    return { count, recent };
   }
 }
