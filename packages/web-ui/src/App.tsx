@@ -101,6 +101,16 @@ function App() {
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deleteAllInput, setDeleteAllInput] = useState('');
+  const deleteAllInputRef = useRef<HTMLInputElement>(null);
+  const canConfirmDeleteAll = (deleteAllInput || '').trim().toUpperCase() === 'DELETE';
+  const confirmDeleteAll = () => {
+    if (!canConfirmDeleteAll) return;
+    deleteAllConversations();
+    setDeleteAllOpen(false);
+    setTimeout(() => inputRef.current?.focus(), 100);
+  };
   const [topK, setTopK] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:topK')) || 5 : 5));
   const [temperature, setTemperature] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:temperature')) || 0.7 : 0.7));
 
@@ -248,6 +258,26 @@ function App() {
       const remaining = conversations.filter(c => c.id !== id);
       setActiveId(remaining.length > 0 ? remaining[0].id : null);
     }
+  };
+
+  const deleteAllConversations = () => {
+    setConversations([]);
+    setActiveId(null);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEYS.conversations);
+        localStorage.removeItem(STORAGE_KEYS.activeId);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const openDeleteAllModal = () => {
+    setDeleteAllInput('');
+    setDeleteAllOpen(true);
+    // Slight delay to ensure element exists before focusing
+    setTimeout(() => deleteAllInputRef.current?.focus(), 50);
   };
 
   const renameConversation = (id: string, newTitle: string) => {
@@ -697,6 +727,8 @@ function App() {
             onDelete={deleteConversation}
             onRename={renameConversation}
             onTogglePin={togglePinConversation}
+            onDeleteAll={deleteAllConversations}
+            onDeleteAllRequest={openDeleteAllModal}
           />
           <div className="main-pane">
             <div className="conversation">
@@ -885,6 +917,85 @@ function App() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Confirmation Modal */}
+      {deleteAllOpen && (
+        <div className="confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-delete-all-title" onClick={() => {
+          setDeleteAllOpen(false);
+          setTimeout(() => inputRef.current?.focus(), 100);
+        }}>
+          <div className="confirm-modal" onClick={(e) => e.stopPropagation()} aria-describedby="confirm-delete-all-desc">
+            <div className="confirm-header">
+              <div className="confirm-title">
+                <svg className="confirm-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M12 9v4m0 4h.01M10.29 3.86l-7.5 12.99A1 1 0 0 0 3.65 19h16.7a1 1 0 0 0 .86-1.15l-3.1-13A1 1 0 0 0 17.16 4H6.84a1 1 0 0 0-.55.16z"/>
+                </svg>
+                <h2 id="confirm-delete-all-title">Delete All Chats</h2>
+              </div>
+              <button
+                className="confirm-close"
+                onClick={() => {
+                  setDeleteAllOpen(false);
+                  setTimeout(() => inputRef.current?.focus(), 100);
+                }}
+                aria-label="Close"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div className="confirm-body">
+              <div className="confirm-warning" role="alert" id="confirm-delete-all-desc">
+                <strong>Warning:</strong> This will permanently remove all {conversations.length} chat{conversations.length === 1 ? '' : 's'} stored in this browser. This cannot be undone.
+              </div>
+              <div className="confirm-instruction">
+                <label htmlFor="confirm-delete-input">
+                  To confirm, type <span className="confirm-token">DELETE</span> below.
+                </label>
+                <input
+                  id="confirm-delete-input"
+                  ref={deleteAllInputRef}
+                  type="text"
+                  value={deleteAllInput}
+                  onChange={(e) => setDeleteAllInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      confirmDeleteAll();
+                    } else if (e.key === 'Escape') {
+                      setDeleteAllOpen(false);
+                      setTimeout(() => inputRef.current?.focus(), 100);
+                    }
+                  }}
+                  aria-invalid={deleteAllInput.length > 0 && !canConfirmDeleteAll}
+                  className="confirm-input"
+                  placeholder="DELETE"
+                />
+                <div className="confirm-hint">Only chats on this device will be deleted.</div>
+              </div>
+            </div>
+            <div className="confirm-actions">
+              <button
+                className="button ghost"
+                onClick={() => {
+                  setDeleteAllOpen(false);
+                  setTimeout(() => inputRef.current?.focus(), 100);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="button danger"
+                disabled={!canConfirmDeleteAll}
+                onClick={confirmDeleteAll}
+              >
+                Delete All
+              </button>
             </div>
           </div>
         </div>

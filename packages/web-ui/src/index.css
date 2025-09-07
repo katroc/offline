@@ -143,7 +143,7 @@ body {
   flex-direction: column;
   background: var(--bg-primary);
   min-height: 100vh;
-  max-width: 1200px;
+  max-width: 1380px;
   margin: 0 auto;
   position: relative;
 }
@@ -155,7 +155,7 @@ body {
   align-items: stretch;
   width: 100%;
   margin: 0 auto;
-  max-width: min(1200px, 96vw);
+  max-width: min(1380px, 96vw);
   flex: 1;
   min-height: 0; /* Enable flex child scrolling */
   height: calc(100vh - var(--header-height)); /* Take full available height */
@@ -185,6 +185,7 @@ body {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0; 
 }
 .history-title { font-size: var(--text-sm); color: var(--text-primary); font-weight: 600; }
+.history-actions { display: inline-flex; align-items: center; gap: var(--space-2); }
 .history-new { 
   display: inline-flex; 
   align-items: center; 
@@ -203,6 +204,25 @@ body {
   color: var(--text-primary); 
   border-color: var(--accent); 
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 12%, transparent);
+}
+.history-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.history-clear:hover {
+  background: color-mix(in oklab, var(--error) 8%, var(--bg-hover));
+  color: var(--error);
+  border-color: color-mix(in oklab, var(--error) 35%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--error) 15%, transparent);
 }
 .history-list { display: flex; flex-direction: column; gap: var(--space-3); }
 .history-empty { color: var(--text-muted); font-size: var(--text-sm); padding: var(--space-3); text-align: center; }
@@ -382,7 +402,7 @@ body {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: min(1200px, 96vw);
+  max-width: min(1380px, 96vw);
   margin: 0 auto;
   padding: var(--space-2) var(--space-3);
   /* Fallback for browsers without color-mix support */
@@ -781,6 +801,155 @@ body {
   }
 }
 
+/* Confirm Modal */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.confirm-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 48px rgba(0,0,0,.28);
+  width: 560px;
+  max-width: 95vw;
+}
+
+.confirm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-4) var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.confirm-title { display: inline-flex; align-items: center; gap: var(--space-2); }
+.confirm-icon { color: var(--error); }
+.confirm-header h2 {
+  font-size: var(--text-xl);
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.confirm-close {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+  cursor: pointer;
+}
+
+.confirm-close:hover { 
+  background: var(--bg-hover); 
+  color: var(--text-primary); 
+  border-color: var(--border-light); 
+}
+
+.confirm-body {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.confirm-warning {
+  background: color-mix(in oklab, var(--error) 12%, var(--bg-secondary));
+  border: 1px solid color-mix(in oklab, var(--error) 25%, var(--border));
+  color: var(--text-primary);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  line-height: var(--leading-relaxed);
+}
+
+.confirm-instruction {
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+.confirm-input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.confirm-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 15%, transparent);
+}
+
+.confirm-token {
+  display: inline-block;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: var(--bg-tertiary);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.confirm-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.button {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.button.ghost {
+  background: transparent;
+}
+
+.button.danger {
+  background: color-mix(in oklab, var(--error) 15%, var(--bg-tertiary));
+  border-color: color-mix(in oklab, var(--error) 35%, var(--border));
+  color: var(--text-primary);
+}
+
+.button.danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.button.danger:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--error) 22%, var(--bg-tertiary));
+  border-color: color-mix(in oklab, var(--error) 45%, var(--border));
+}
+
 
 .conversation {
   flex: 1;
@@ -797,7 +966,7 @@ body {
   border-radius: var(--radius-xl);
   box-shadow: 0 10px 30px rgba(0,0,0,.18) inset, 0 1px 0 rgba(255,255,255,.02) inset;
   width: 100%;
-  max-width: min(1100px, 96vw);
+  max-width: min(1265px, 96vw);
   margin-bottom: var(--space-3);
   align-items: stretch;
   min-height: 0; /* Important for flex scrolling */
@@ -1062,7 +1231,7 @@ body {
   box-shadow: 0 -10px 30px rgba(0,0,0,.14);
   border-radius: var(--radius-xl); /* Full rounded corners */
   width: 100%;
-  max-width: min(1100px, 96vw);
+  max-width: min(1265px, 96vw);
   margin: 0 auto;
   margin-top: var(--space-4); /* Gap between conversation and input */
   --composer-height: var(--space-12);
@@ -1386,7 +1555,7 @@ body {
   gap: var(--space-3);
   flex-wrap: wrap;
   width: 100%;
-  max-width: min(1100px, 96vw);
+  max-width: min(1265px, 96vw);
   margin: 0 auto;
 }
 
