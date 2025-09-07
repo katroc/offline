@@ -111,13 +111,6 @@ async function getRagPipeline(): Promise<DefaultRAGPipeline> {
 export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
   const useLlm = (process.env.LLM_BASE_URL || '').length > 0;
   const useRealRAG = process.env.CONFLUENCE_BASE_URL && process.env.CONFLUENCE_USERNAME;
-  
-  console.log('DEBUG: Environment check:', {
-    CONFLUENCE_BASE_URL: process.env.CONFLUENCE_BASE_URL,
-    CONFLUENCE_USERNAME: process.env.CONFLUENCE_USERNAME,
-    useLlm,
-    useRealRAG
-  });
 
   // Use mock citations if Confluence not configured
   if (!useRealRAG) {

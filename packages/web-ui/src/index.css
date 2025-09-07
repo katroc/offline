@@ -1381,6 +1381,81 @@ input[type="number"] {
   z-index: 10;
 }
 
+.input-left-controls {
+  display: flex;
+  align-items: center;
+  padding-left: var(--space-1);
+  width: 80px; /* Increased width for larger toggle */
+}
+
+.rag-bypass-toggle {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.toggle-checkbox {
+  display: none;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  width: 100%;
+  min-width: 68px; /* Increased minimum width */
+}
+
+.toggle-label:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.toggle-checkbox:checked + .toggle-label {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* Special styling for RAG mode (when not checked) */
+.toggle-checkbox:not(:checked) + .toggle-label {
+  color: #f97316; /* Orange color for RAG mode */
+}
+
+.toggle-checkbox:not(:checked) + .toggle-label:hover {
+  background: color-mix(in oklab, #f97316 15%, transparent);
+  border-color: color-mix(in oklab, #f97316 30%, transparent);
+}
+
+.toggle-checkbox:not(:checked) + .toggle-label .toggle-icon {
+  color: #f97316; /* Orange RAG icon */
+}
+
+.toggle-icon {
+  flex-shrink: 0;
+  width: 18px; /* Slightly larger icons */
+  height: 18px;
+}
+
+.mode-text {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 28px; /* Increased width for larger text */
+  text-align: center;
+}
+
 .input-field {
   flex: 1;
   height: var(--composer-height);
