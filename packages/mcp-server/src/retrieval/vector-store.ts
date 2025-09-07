@@ -17,6 +17,17 @@ export interface LanceDBConfig {
   tableName?: string;
 }
 
+export interface ChromaConfig {
+  host?: string;
+  port?: number;
+  auth?: {
+    provider: 'token' | 'basic';
+    credentials: string; // token or base64-encoded "user:pass"
+  };
+  ssl?: boolean;
+  collectionName?: string;
+}
+
 // TODO: Implement LanceDB when dependencies are added
 export class MockVectorStore implements VectorStore {
   private chunks: Map<string, Chunk> = new Map();
@@ -377,8 +388,308 @@ export class LanceDBVectorStore implements VectorStore {
         console.warn('IVF_PQ index creation not supported or failed. Continuing without explicit index. Error:', e2 instanceof Error ? e2.message : String(e2));
       }
     } catch (err) {
-      // Don’t fail app startup for index issues
+      // Don't fail app startup for index issues
       console.warn('Vector index setup skipped due to error:', err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
+// Chroma implementation
+export class ChromaVectorStore implements VectorStore {
+  private client: any = null;
+  private collection: any = null;
+  private readonly collectionName: string;
+
+  constructor(private config: ChromaConfig) {
+    this.collectionName = config.collectionName || 'confluence_chunks';
+  }
+
+  async initialize(): Promise<void> {
+    try {
+      const { ChromaClient } = await import('chromadb');
+      
+      const host = this.config.host || 'localhost';
+      const port = this.config.port || 8000;
+      const ssl = this.config.ssl || false;
+      const protocol = ssl ? 'https' : 'http';
+      const path = `${protocol}://${host}:${port}`;
+
+      // Create client with optional authentication
+      let auth: any = undefined;
+      if (this.config.auth) {
+        if (this.config.auth.provider === 'token') {
+          auth = { tokenCredentials: this.config.auth.credentials };
+        } else if (this.config.auth.provider === 'basic') {
+          const [username, password] = this.config.auth.credentials.split(':');
+          auth = { basicAuth: { username, password } };
+        }
+      }
+
+      this.client = new ChromaClient({ 
+        path, 
+        ...(auth && { auth })
+      });
+      
+      // Try to get existing collection, create if it doesn't exist
+      try {
+        this.collection = await this.client.getCollection({ name: this.collectionName });
+        console.log(`Opened existing Chroma collection: ${this.collectionName}`);
+      } catch (error) {
+        console.log(`Collection ${this.collectionName} doesn't exist, creating...`);
+        // Collection doesn't exist, create it
+        try {
+          this.collection = await this.client.createCollection({ 
+            name: this.collectionName,
+            metadata: { 
+              description: 'Confluence chunks for RAG',
+              created_at: new Date().toISOString()
+            },
+            embeddingFunction: null // We provide our own embeddings
+          });
+          console.log(`Created Chroma collection: ${this.collectionName}`);
+        } catch (createError) {
+          console.error('Failed to create collection:', createError);
+          throw createError;
+        }
+      }
+
+      console.log(`Chroma initialized successfully at: ${path}`);
+    } catch (error) {
+      console.error('Failed to initialize Chroma:', error);
+      throw new Error(`Chroma initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async upsertChunks(chunks: Chunk[]): Promise<void> {
+    if (chunks.length === 0) return;
+
+    try {
+      if (!this.collection) {
+        throw new Error('Chroma collection not initialized');
+      }
+
+      const nowIso = new Date().toISOString();
+      
+      // Delete existing chunks for the same pages (upsert behavior)
+      const pageIds = [...new Set(chunks.map(c => c.pageId))];
+      
+      for (const pageId of pageIds) {
+        try {
+          // Get existing document IDs for this page
+          const existing = await this.collection.get({
+            where: { page_id: { '$eq': pageId } }
+          });
+          
+          if (existing.ids && existing.ids.length > 0) {
+            await this.collection.delete({
+              ids: existing.ids
+            });
+          }
+        } catch (error) {
+          // Ignore deletion errors, might be that no documents exist
+          console.warn(`Could not delete existing chunks for page ${pageId}:`, error);
+        }
+      }
+
+      // Prepare data for Chroma
+      const ids = chunks.map(chunk => chunk.id);
+      const embeddings = chunks.map(chunk => chunk.vector || []);
+      const documents = chunks.map(chunk => chunk.text);
+      const metadatas = chunks.map(chunk => ({
+        page_id: chunk.pageId,
+        space: chunk.space || '',
+        title: chunk.title,
+        section_anchor: chunk.sectionAnchor || '',
+        version: chunk.version,
+        updated_at: chunk.updatedAt,
+        labels: Array.isArray(chunk.labels) ? chunk.labels.join(',') : '',
+        url: chunk.url || '',
+        indexed_at: nowIso
+      }));
+
+      // Add to collection
+      await this.collection.add({
+        ids,
+        embeddings,
+        documents,
+        metadatas
+      });
+
+      console.log(`Added ${chunks.length} records to Chroma collection: ${this.collectionName}`);
+    } catch (error) {
+      console.error('Failed to upsert chunks to Chroma:', error);
+      throw new Error(`Chroma upsert failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async searchSimilar(vector: number[], filters: Filters, topK: number): Promise<VectorSearchResult[]> {
+    if (!this.collection) {
+      console.warn('Chroma collection not initialized, returning empty results');
+      return [];
+    }
+
+    try {
+      // Build where conditions for filtering
+      const whereConditions: any = {};
+      
+      if (filters.space) {
+        whereConditions.space = { '$eq': filters.space };
+      }
+      
+      if (filters.labels && filters.labels.length > 0) {
+        // For label filtering, we'll check if any of the labels are contained in the comma-separated string
+        // Since Chroma doesn't have a perfect LIKE operator, we'll use a regex-like approach
+        const labelQueries = filters.labels.map(label => ({
+          labels: { '$contains': label }
+        }));
+        
+        if (labelQueries.length === 1) {
+          Object.assign(whereConditions, labelQueries[0]);
+        } else {
+          whereConditions['$or'] = labelQueries;
+        }
+      }
+      
+      if (filters.updatedAfter) {
+        whereConditions.updated_at = { '$gte': filters.updatedAfter };
+      }
+
+      // Perform the query
+      const queryResult = await this.collection.query({
+        queryEmbeddings: [vector],
+        nResults: topK,
+        where: Object.keys(whereConditions).length > 0 ? whereConditions : undefined,
+        include: ['metadatas', 'documents', 'distances']
+      });
+
+      // Map results to VectorSearchResult format
+      const results: VectorSearchResult[] = [];
+      
+      console.log('Chroma query result structure:', JSON.stringify({
+        ids: queryResult.ids,
+        distances: queryResult.distances,
+        hasDocuments: !!queryResult.documents,
+        hasMetadatas: !!queryResult.metadatas,
+        documentCount: queryResult.documents?.length,
+        metadataCount: queryResult.metadatas?.length
+      }, null, 2));
+      
+      if (queryResult.ids && Array.isArray(queryResult.ids) && queryResult.ids.length > 0) {
+        // Chroma returns arrays of arrays - get the first batch
+        const ids = queryResult.ids[0] || [];
+        const distances = queryResult.distances?.[0] || [];
+        const documents = queryResult.documents?.[0] || [];
+        const metadatas = queryResult.metadatas?.[0] || [];
+        const embeddings = queryResult.embeddings?.[0] || [];
+
+        for (let i = 0; i < ids.length; i++) {
+          const id = ids[i];
+          const distance = distances[i] || 0;
+          const document = documents[i] || '';
+          const metadata = metadatas[i] || {};
+
+          console.log(`Chroma result ${i}:`, { id, hasDocument: !!document, documentLength: document?.length, metadataKeys: Object.keys(metadata) });
+
+          const chunk: Chunk = {
+            id,
+            pageId: metadata.page_id,
+            space: metadata.space,
+            title: metadata.title,
+            sectionAnchor: metadata.section_anchor || undefined,
+            text: document || '', // Ensure text is always a string
+            version: metadata.version,
+            updatedAt: metadata.updated_at,
+            labels: metadata.labels ? String(metadata.labels).split(',').filter(Boolean) : [],
+            vector: embeddings[i] || [],
+            url: metadata.url || undefined,
+            indexedAt: metadata.indexed_at || undefined
+          };
+
+          results.push({
+            chunk,
+            score: 1 - distance // Convert distance to similarity score
+          });
+        }
+      }
+
+      // TTL post-filtering
+      const ttlDays = parseInt(process.env.CHUNK_TTL_DAYS || '7', 10);
+      if (Number.isNaN(ttlDays) || ttlDays <= 0) return results;
+      
+      const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
+      return results.filter(r => {
+        const t = r.chunk.indexedAt ? Date.parse(r.chunk.indexedAt) : NaN;
+        return isNaN(t) ? true : t >= cutoffMs;
+      });
+    } catch (error) {
+      console.error('Failed to search Chroma:', error);
+      return []; // Return empty results rather than throwing
+    }
+  }
+
+  async deleteByPageId(pageId: string): Promise<void> {
+    if (!this.collection) {
+      console.warn('Chroma collection not initialized, skipping delete');
+      return;
+    }
+
+    try {
+      // Get existing document IDs for this page
+      const existing = await this.collection.get({
+        where: { page_id: { '$eq': pageId } }
+      });
+      
+      if (existing.ids && existing.ids.length > 0) {
+        await this.collection.delete({
+          ids: existing.ids
+        });
+        console.log(`Deleted chunks for page: ${pageId}`);
+      }
+    } catch (error) {
+      console.error(`Failed to delete chunks for page ${pageId}:`, error);
+      throw new Error(`Chroma delete failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Stats method for diagnostics (similar to LanceDB)
+  async getStats(limit = 5): Promise<{ count: number | null; recent: Array<{ id: string; page_id: string; title?: string; indexed_at?: string }> }> {
+    if (!this.collection) {
+      return { count: 0, recent: [] };
+    }
+
+    try {
+      // Get collection info to get count
+      const collectionInfo = await this.client.getCollection({
+        name: this.collectionName
+      });
+      
+      const count = collectionInfo.count || null;
+
+      // Get recent items (Chroma doesn't have built-in sorting, so we'll get a sample)
+      const sampleResult = await this.collection.get({
+        limit
+      });
+
+      const recent: Array<{ id: string; page_id: string; title?: string; indexed_at?: string }> = [];
+      
+      if (sampleResult.ids) {
+        for (let i = 0; i < sampleResult.ids.length; i++) {
+          const id = sampleResult.ids[i];
+          const metadata = sampleResult.metadatas ? sampleResult.metadatas[i] : {};
+          
+          recent.push({
+            id,
+            page_id: metadata.page_id,
+            title: metadata.title,
+            indexed_at: metadata.indexed_at
+          });
+        }
+      }
+
+      return { count, recent };
+    } catch (error) {
+      console.warn('Failed to get Chroma stats:', error);
+      return { count: null, recent: [] };
     }
   }
 }

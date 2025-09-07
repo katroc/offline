@@ -5,7 +5,7 @@ Fastify-based Node/TypeScript server that powers Cabin’s retrieval and chat. I
 Overview
 - Framework: Fastify
 - LLM: OpenAI-compatible API (LM Studio or Ollama with compatibility)
-- Retrieval: Default pipeline with Google embeddings + vector search; Smart pipeline with LLM ranking + chunking; LanceDB vector storage (mock fallback)
+- Retrieval: Default pipeline with Google embeddings + vector search; Smart pipeline with LLM ranking + chunking; LanceDB or Chroma vector storage (mock fallback)
 - Confluence: Live search/crawl via REST; can ingest pre-fetched pages
 
 Requirements
@@ -26,8 +26,12 @@ Environment
 - `LLM_EMBED_MODEL` — model id for embeddings (e.g., `text-embedding-embeddinggemma-300m-qat`)
 - `REQUEST_TIMEOUT_MS` — outbound timeout (default 15000)
 - `CONFLUENCE_BASE_URL`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN` — enable live Confluence
+- `VECTOR_STORE` — choose vector store: `lancedb` (default) or `chroma`
 - `LANCEDB_PATH` — path to LanceDB (default `./lancedb`)
-- `USE_REAL_VECTORDB` — `true` to use LanceDB vector storage, `false` for mock store
+- `CHROMA_HOST`, `CHROMA_PORT`, `CHROMA_SSL` — Chroma server connection (defaults: localhost:8000, ssl=false)
+- `CHROMA_COLLECTION` — Chroma collection name (default `confluence_chunks`)
+- `CHROMA_AUTH_PROVIDER`, `CHROMA_AUTH_CREDENTIALS` — optional Chroma authentication
+- `USE_REAL_VECTORDB` — `true` to use real vector storage, `false` for mock store
 - `USE_SMART_PIPELINE` — `false` to use default vector pipeline, `true` for LLM-based pipeline
 - `PREFER_LIVE_SEARCH` — `true` to prefer live search over local store
 - `RELEVANCE_THRESHOLD` — minimum similarity score for vector results (default `0.5`)
@@ -39,6 +43,21 @@ Environment
 - `ENABLE_INTENT_PROCESSING` — normalize queries and try fallbacks by detected intent (default `true`)
 - `INTENT_CONFIDENCE_THRESHOLD` — confidence needed to prefer normalized over original (default `0.7`)
 - `MAX_FALLBACK_QUERIES` — max number of alternate query variants to attempt (default `3`)
+- `SMART_RAG_THRESHOLD` — relevance threshold for Smart RAG pipeline (0.0-1.0, default `0.3`)
+- `SMART_RAG_ALLOW_ANSWERS_BYPASS` — allow documents marked as "ANSWERS" to bypass relevance threshold (default `true`)
+
+Vector Store Options
+
+**LanceDB (file-based, default)**
+- Embedded vector database using local files
+- Good for development and single-node deployments
+- Data stored in `./data/lancedb` directory
+
+**Chroma (HTTP API, containerized)**
+- External vector database with HTTP API
+- Better performance and cleaner architecture
+- Start Chroma server: `docker run -p 8000:8000 chromadb/chroma`
+- For persistence: `docker run -p 8000:8000 -v ./chroma-data:/chroma/chroma chromadb/chroma`
 
 Vector (LanceDB) tuning
 - `LANCEDB_USE_HNSW` — attempt HNSW index creation (fallback to IVF_PQ)
@@ -68,6 +87,32 @@ Notes
 
 - Citations are now 1:1 with the retrieved chunks and preserve the exact order used to build the LLM context. This ensures that bracketed references like `[1]` in the answer map directly to `citations[0]`, `[2]` → `citations[1]`, etc. Each citation also includes a short `snippet` from the underlying chunk for better attribution.
 - Responses also include optional `displayCitations` (deduped by `pageId+url`, with merged snippets) and an `citationIndexMap` mapping from original citation indices to their deduped positions. Streaming `citations` events include `{ citations, displayCitations }`.
+
+Configuration Examples
+
+**Using LanceDB (default)**
+```bash
+VECTOR_STORE=lancedb
+LANCEDB_PATH=./data/lancedb
+USE_REAL_VECTORDB=true
+```
+
+**Using Chroma**
+```bash
+VECTOR_STORE=chroma
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+CHROMA_SSL=false
+CHROMA_COLLECTION=confluence_chunks
+USE_REAL_VECTORDB=true
+```
+
+**Preventing Smart RAG hallucinations**
+```bash
+SMART_RAG_THRESHOLD=0.75              # Higher threshold = more strict
+SMART_RAG_ALLOW_ANSWERS_BYPASS=false  # Disable "ANSWERS" bypass
+RELEVANCE_THRESHOLD=0.1               # Lower for Chroma (different scoring)
+```
 
 Quick curl
 ```

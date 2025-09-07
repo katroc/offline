@@ -19,6 +19,7 @@
   "dependencies": {
     "@app/shared": "file:../shared",
     "@lancedb/lancedb": "^0.22.0",
+    "chromadb": "^3.0.14",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
     "uuid": "^9.0.1"

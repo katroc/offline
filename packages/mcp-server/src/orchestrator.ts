@@ -3,7 +3,7 @@ import type { ValidRagQuery } from './validation.js';
 import { chatCompletion, chatCompletionStream, type ChatMessage } from './llm/chat.js';
 import { ConfluenceClient } from './sources/confluence.js';
 import { LocalDocStore } from './store/local-doc-store.js';
-import { MockVectorStore, LanceDBVectorStore } from './retrieval/vector-store.js';
+import { MockVectorStore, LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
 import { SimpleChunker } from './retrieval/chunker.js';
 import { DefaultRAGPipeline } from './retrieval/pipeline.js';
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
@@ -41,30 +41,51 @@ async function getRagPipeline(): Promise<DefaultRAGPipeline> {
       apiToken: process.env.CONFLUENCE_API_TOKEN || ''
     });
 
-    // Initialize vector store - use real LanceDB if path configured, otherwise mock
-    // Resolve LanceDB path relative to repo root to avoid multiple DBs from different CWDs
+    // Initialize vector store - support LanceDB, Chroma, or mock
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const repoRoot = path.resolve(__dirname, '../../../');
-    const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
-    const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
-    const useLanceDB = process.env.USE_REAL_VECTORDB !== 'false'; // Default to true
+    const useRealVectorDB = process.env.USE_REAL_VECTORDB !== 'false'; // Default to true
+    const vectorStoreType = process.env.VECTOR_STORE || 'lancedb';
     
     let vectorStore;
-    if (useLanceDB) {
-      vectorStore = new LanceDBVectorStore({
-        dbPath: lanceDbPath,
-        tableName: 'confluence_chunks'
-      });
-      try {
-        await vectorStore.initialize();
-        console.log(`Initialized LanceDB vector store at: ${lanceDbPath}`);
-      } catch (error) {
-        console.warn('Failed to initialize LanceDB, falling back to mock store:', error);
-        vectorStore = new MockVectorStore();
+    if (useRealVectorDB) {
+      if (vectorStoreType.toLowerCase() === 'chroma') {
+        vectorStore = new ChromaVectorStore({
+          host: process.env.CHROMA_HOST,
+          port: process.env.CHROMA_PORT ? parseInt(process.env.CHROMA_PORT, 10) : undefined,
+          ssl: process.env.CHROMA_SSL === 'true',
+          collectionName: process.env.CHROMA_COLLECTION || 'confluence_chunks',
+          auth: process.env.CHROMA_AUTH_PROVIDER && process.env.CHROMA_AUTH_CREDENTIALS ? {
+            provider: process.env.CHROMA_AUTH_PROVIDER as 'token' | 'basic',
+            credentials: process.env.CHROMA_AUTH_CREDENTIALS
+          } : undefined
+        });
+        try {
+          await vectorStore.initialize();
+          console.log(`Initialized Chroma vector store at: ${process.env.CHROMA_HOST || 'localhost'}:${process.env.CHROMA_PORT || 8000}`);
+        } catch (error) {
+          console.warn('Failed to initialize Chroma, falling back to mock store:', error);
+          vectorStore = new MockVectorStore();
+        }
+      } else {
+        // Default to LanceDB
+        const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
+        const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
+        vectorStore = new LanceDBVectorStore({
+          dbPath: lanceDbPath,
+          tableName: 'confluence_chunks'
+        });
+        try {
+          await vectorStore.initialize();
+          console.log(`Initialized LanceDB vector store at: ${lanceDbPath}`);
+        } catch (error) {
+          console.warn('Failed to initialize LanceDB, falling back to mock store:', error);
+          vectorStore = new MockVectorStore();
+        }
       }
     } else {
-      console.log('Using mock vector store (set USE_REAL_VECTORDB=true for LanceDB)');
+      console.log('Using mock vector store (set USE_REAL_VECTORDB=true for real vector stores)');
       vectorStore = new MockVectorStore();
     }
 
