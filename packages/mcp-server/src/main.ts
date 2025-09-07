@@ -98,6 +98,62 @@ app.post('/chat/completions', async (req, reply) => {
   }
 });
 
+// Direct LLM query (bypass RAG completely)
+app.post('/llm/query', async (req, reply) => {
+  try {
+    const body = req.body as any;
+    const question = typeof body.question === 'string' ? body.question.trim() : '';
+    const model = typeof body.model === 'string' ? body.model.trim() : undefined;
+    
+    if (!question) {
+      return reply.code(400).send({ error: 'question is required' });
+    }
+
+    const useLlm = (process.env.LLM_BASE_URL || '').length > 0;
+    if (!useLlm) {
+      return reply.send({
+        answer: `Direct LLM answer for: ${question} (Configure LLM_BASE_URL for actual LLM responses)`,
+        citations: [],
+        displayCitations: [],
+        citationIndexMap: []
+      });
+    }
+
+    const system: ChatMessage = {
+      role: 'system',
+      content: [
+        'You are a helpful AI assistant with broad knowledge across many topics.',
+        'Answer questions directly using your training knowledge.',
+        'Format your responses clearly using markdown with appropriate headings, lists, and code blocks.',
+        'If you are unsure about something specific, acknowledge the uncertainty.',
+        'For technical questions, provide practical examples when helpful.',
+        'Use **bold** for emphasis and `code` formatting for technical terms.',
+        'Structure your response based on the question type with clear sections when appropriate.'
+      ].join(' ')
+    };
+
+    const user: ChatMessage = {
+      role: 'user',
+      content: question
+    };
+
+    const answer = await chatCompletion([system, user], { model });
+    return reply.send({
+      answer,
+      citations: [],
+      displayCitations: [],
+      citationIndexMap: []
+    });
+
+  } catch (err) {
+    const reqId = (req as any).reqId as string | undefined;
+    logError({ reqId, method: req.method, url: req.url, err });
+    return reply.code(500).send({ 
+      error: `Failed to process LLM query: ${err instanceof Error ? err.message : 'Unknown error'}` 
+    });
+  }
+});
+
 // RAG query (using our validator + orchestrator stub)
 app.post('/rag/query', async (req, reply) => {
   try {

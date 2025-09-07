@@ -10,6 +10,10 @@ export default defineConfig({
         target: 'http://localhost:8787',
         changeOrigin: true
       },
+      '/llm': {
+        target: 'http://localhost:8787',
+        changeOrigin: true
+      },
       '/chat': {
         target: 'http://localhost:8787',
         changeOrigin: true

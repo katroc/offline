@@ -560,7 +560,8 @@ function App() {
         ragBypass: ragBypass || undefined,
       };
 
-      const response = await fetch('/rag/query', {
+      const endpoint = ragBypass ? '/llm/query' : '/rag/query';
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -865,55 +866,68 @@ function App() {
             </div>
 
             <form onSubmit={handleSubmit} className="input-area">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={!isOnline ? "Offline - check connection..." : "Ask a question..."}
-            className="input-field"
-            disabled={isLoading || !isOnline}
-            autoFocus
-          />
-          {isLoading ? (
-            <button 
-              type="button" 
-              className="stop-button"
-              onClick={stopGeneration}
-            >
-              Stop
-            </button>
-          ) : (
-            <button 
-              type="submit" 
-              className="send-button"
-              disabled={!input.trim() || !isOnline}
-              title={!isOnline ? "Cannot send while offline" : undefined}
-            >
-              Send
-            </button>
-          )}
+              <div className="input-left-controls">
+                <label className="rag-bypass-toggle">
+                  <input
+                    type="checkbox"
+                    checked={ragBypass}
+                    onChange={(e) => setRagBypass(e.target.checked)}
+                    className="toggle-checkbox"
+                  />
+                  <span className="toggle-label" title={ragBypass ? 'Direct LLM responses' : 'Document-grounded answers'}>
+                    {ragBypass ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="toggle-icon">
+                        <rect width="16" height="20" x="4" y="2" rx="2" ry="2"/>
+                        <path d="M9 22v-4h6v4"/>
+                        <path d="M8 6h.01"/>
+                        <path d="M16 6h.01"/>
+                        <path d="M12 6h.01"/>
+                        <path d="M12 10h.01"/>
+                        <path d="M12 14h.01"/>
+                        <path d="M16 10h.01"/>
+                        <path d="M16 14h.01"/>
+                        <path d="M8 10h.01"/>
+                        <path d="M8 14h.01"/>
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="toggle-icon">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14,2 14,8 20,8"/>
+                      </svg>
+                    )}
+                    <span className="mode-text">{ragBypass ? 'LLM' : 'RAG'}</span>
+                  </span>
+                </label>
+              </div>
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={!isOnline ? "Offline - check connection..." : "Ask a question..."}
+                className="input-field"
+                disabled={isLoading || !isOnline}
+                autoFocus
+              />
+              {isLoading ? (
+                <button 
+                  type="button" 
+                  className="stop-button"
+                  onClick={stopGeneration}
+                >
+                  Stop
+                </button>
+              ) : (
+                <button 
+                  type="submit" 
+                  className="send-button"
+                  disabled={!input.trim() || !isOnline}
+                  title={!isOnline ? "Cannot send while offline" : undefined}
+                >
+                  Send
+                </button>
+              )}
             </form>
-            
-            <div className="input-controls">
-              <label className="rag-bypass-toggle">
-                <input
-                  type="checkbox"
-                  checked={ragBypass}
-                  onChange={(e) => setRagBypass(e.target.checked)}
-                  className="toggle-checkbox"
-                />
-                <span className="toggle-label">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="toggle-icon">
-                    <path d="M9 12l2 2 4-4"/>
-                  </svg>
-                  {ragBypass ? 'AI Mode' : 'RAG Mode'}
-                </span>
-                <span className="toggle-description">
-                  {ragBypass ? 'Direct AI responses' : 'Document-grounded answers'}
-                </span>
-              </label>
-            </div>
           </div>
         </div>
       </div>
