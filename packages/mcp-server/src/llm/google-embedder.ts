@@ -19,6 +19,16 @@ export class GoogleEmbedder implements Embedder {
       timeoutMs: this.config.timeoutMs
     };
 
-    return await embed(batch, embedOptions);
+    const raw = await embed(batch, embedOptions);
+    // Normalize to unit length for stable cosine similarity across models
+    return raw.map(vec => {
+      let norm = 0;
+      for (let i = 0; i < vec.length; i++) norm += vec[i] * vec[i];
+      norm = Math.sqrt(norm);
+      if (!isFinite(norm) || norm === 0) return vec;
+      const out = new Array(vec.length);
+      for (let i = 0; i < vec.length; i++) out[i] = vec[i] / norm;
+      return out;
+    });
   }
 }

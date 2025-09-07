@@ -30,6 +30,9 @@ Environment
 - `USE_SMART_PIPELINE` — `false` to use default vector pipeline, `true` for LLM-based pipeline
 - `PREFER_LIVE_SEARCH` — `true` to prefer live search over local store
 - `RELEVANCE_THRESHOLD` — minimum similarity score for vector results (default `0.5`)
+- `MIN_VECTOR_RESULTS` — minimum number of vector candidates to fetch before MMR (default `3`)
+- `ADAPTIVE_THRESHOLD` — `true` to adapt threshold to `max(RELEVANCE_THRESHOLD, 0.6 * maxScore)` (default `false`)
+- `MIN_KEYWORD_SCORE` — optional lexical floor [0..1] to filter off-topic vector hits before MMR reordering (default `0.0`)
 - `ALLOW_GENERAL_KNOWLEDGE` — `false` to restrict to indexed knowledge only
 - `CHUNK_TTL_DAYS` — TTL in days for vector-store chunks (default `7`). Chunks older than this are filtered from vector results; stale pages are lazily re-indexed in the background.
 

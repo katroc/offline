@@ -8,6 +8,8 @@ import { SimpleChunker } from './retrieval/chunker.js';
 import { DefaultRAGPipeline } from './retrieval/pipeline.js';
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
 import { GoogleEmbedder } from './llm/google-embedder.js';
+import { fileURLToPath } from 'url';
+import path from 'node:path';
 
 // Singleton instances (in production, these would be properly managed)
 let ragPipeline: DefaultRAGPipeline | null = null;
@@ -39,7 +41,12 @@ async function getRagPipeline(): Promise<DefaultRAGPipeline> {
     });
 
     // Initialize vector store - use real LanceDB if path configured, otherwise mock
-    const lanceDbPath = process.env.LANCEDB_PATH || './data/lancedb';
+    // Resolve LanceDB path relative to repo root to avoid multiple DBs from different CWDs
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const repoRoot = path.resolve(__dirname, '../../../');
+    const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
+    const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
     const useLanceDB = process.env.USE_REAL_VECTORDB !== 'false'; // Default to true
     
     let vectorStore;
@@ -125,7 +132,10 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
         '- For comparisons: Use tables or structured lists to compare options',
         'Use **bold** for important terms and `code` formatting for technical elements.',
         'Citations: Use bracketed numbers like [1], [2] that refer to the sources list order.',
-        'Place citations immediately after the sentence they support.',
+        'Always include bracketed citations immediately after the specific sentence they support. Only cite numbers that exist in the provided context.',
+        'Cite ONLY sources that directly support your statements. Do not include unrelated sources.',
+        'Limit to at most 3 distinct citations. If only one source is relevant, cite only that one.',
+        'At the end of your answer, include a final line: "Sources: [n][, [m][, [k]]]" listing ONLY the citations you used.',
         'Use blockquotes (>) for important notes or warnings.',
         'Do not invent facts or sources.'
       ].join(' ')
@@ -197,7 +207,8 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
         '- For comparisons: Use tables or structured lists to compare options',
         'Use **bold** for important terms and `code` formatting for technical elements.',
         'Citations: Use bracketed numbers like [1], [2] that refer to the sources list order.',
-        'Place citations immediately after the sentence they support.',
+        'Place citations immediately after the sentence they support. Only cite numbers that exist in the provided context.',
+        'If a sentence is not directly supported by a specific chunk, omit the citation. Prefer the first clearly relevant chunk when multiple apply.',
         'Use blockquotes (>) for important notes or warnings.',
         'Do not invent facts or sources.'
       ].join(' ')
@@ -208,7 +219,11 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
       content: `Context:\n${contextText}\n\nQuestion: ${query.question}`
     };
 
-    const answer = await chatCompletion([system, user], { model: query.model });
+    let answer = await chatCompletion([system, user], { model: query.model });
+    // Fallback: ensure at least one bracketed citation exists if we have sources
+    if (!/\[(\d+)\]/.test(answer) && retrieval.citations.length > 0) {
+      answer = `${answer}\n\nSources: [1]`;
+    }
     const { displayCitations, indexMap } = dedupeCitations(retrieval.citations);
     return { answer, citations: retrieval.citations, displayCitations, citationIndexMap: indexMap };
 
@@ -234,9 +249,9 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
       { pageId: '67890', title: 'Architecture Overview', url: 'https://confluence.local/pages/67890', sectionAnchor: 'rag-pipeline', snippet: 'Mock content describing the RAG pipeline architecture and how it processes queries.' },
     ];
     
-    const { displayCitations } = dedupeCitations(citations);
+    const { displayCitations, indexMap } = dedupeCitations(citations);
     // Send citations first
-    yield { type: 'citations', citations: { original: citations, display: displayCitations } } as any;
+    yield { type: 'citations', citations: { original: citations, display: displayCitations, indexMap } } as any;
     
     if (!useLlm) {
       yield { type: 'content', content: `Mock answer for: ${query.question} (Configure LLM_BASE_URL and CONFLUENCE_* env vars for full RAG)` };
@@ -262,7 +277,9 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
         '- For comparisons: Use tables or structured lists to compare options',
         'Use **bold** for important terms and `code` formatting for technical elements.',
         'Citations: Use bracketed numbers like [1], [2] that refer to the sources list order.',
-        'Place citations immediately after the sentence they support.',
+        'Always include bracketed citations immediately after the specific sentence they support. Only cite numbers that exist in the provided context.',
+        'Cite ONLY sources that directly support your statements. Limit to at most 3 distinct citations.',
+        'End your answer with a final line: "Sources: [n][, [m][, [k]]]" listing ONLY the citations you used.',
         'Use blockquotes (>) for important notes or warnings.',
         'Do not invent facts or sources.'
       ].join(' ')
@@ -310,10 +327,10 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
     }
 
     citations = retrieval.citations;
-    const { displayCitations } = dedupeCitations(citations);
+    const { displayCitations, indexMap } = dedupeCitations(citations);
 
-    // Send citations first (include displayCitations for UIs that support it)
-    yield { type: 'citations', citations: { original: citations, display: displayCitations } } as any;
+    // Send citations first (include displayCitations and index map for UIs that support it)
+    yield { type: 'citations', citations: { original: citations, display: displayCitations, indexMap } } as any;
 
     if (!useLlm) {
       yield { type: 'content', content: `Retrieved ${retrieval.chunks.length} chunks for: ${query.question}` };

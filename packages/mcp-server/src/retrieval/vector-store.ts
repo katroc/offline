@@ -122,6 +122,7 @@ export class LanceDBVectorStore implements VectorStore {
         updated_at: chunk.updatedAt,
         labels: Array.isArray(chunk.labels) ? chunk.labels.join(',') : '', // Convert to comma-separated string
         vector: Array.isArray(chunk.vector) ? chunk.vector : [],
+        url: chunk.url || '',
         indexed_at: nowIso
       }));
 
@@ -162,6 +163,8 @@ export class LanceDBVectorStore implements VectorStore {
 
     try {
       let query = this.table.search(vector).limit(topK);
+      // Prefer cosine similarity if available
+      try { if (typeof query.metricType === 'function') query = query.metricType('cosine'); } catch {}
 
       // Apply filters
       const whereConditions: string[] = [];
@@ -169,9 +172,11 @@ export class LanceDBVectorStore implements VectorStore {
         whereConditions.push(`space = '${filters.space.replace(/'/g, "''")}'`);
       }
       if (filters.labels && filters.labels.length > 0) {
-        const labelConditions = filters.labels.map(label => 
-          `array_contains(labels, '${label.replace(/'/g, "''")}')`
-        ).join(' OR ');
+        // Labels are stored as a comma-separated string. Use LIKE for a pragmatic match.
+        const labelConditions = filters.labels.map(label => {
+          const safe = label.replace(/'/g, "''");
+          return `labels LIKE '%${safe}%'`;
+        }).join(' OR ');
         whereConditions.push(`(${labelConditions})`);
       }
       if (filters.updatedAfter) {
@@ -197,6 +202,7 @@ export class LanceDBVectorStore implements VectorStore {
           updatedAt: record.updated_at,
           labels: record.labels ? record.labels.split(',').filter(Boolean) : [],
           vector: record.vector,
+          url: record.url,
           indexedAt: record.indexed_at
         },
         score: record._distance ? 1 - record._distance : 1
