@@ -113,6 +113,13 @@ function App() {
   };
   const [topK, setTopK] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:topK')) || 5 : 5));
   const [temperature, setTemperature] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:temperature')) || 0.7 : 0.7));
+  // Crawler config state (admin)
+  const [crawlerAllSpaces, setCrawlerAllSpaces] = useState(true);
+  const [crawlerSpaces, setCrawlerSpaces] = useState('');
+  const [crawlerPageSize, setCrawlerPageSize] = useState(50);
+  const [crawlerMaxPages, setCrawlerMaxPages] = useState(200);
+  const [crawlerConcurrency, setCrawlerConcurrency] = useState(4);
+  const [availableSpaces, setAvailableSpaces] = useState<string[]>([]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -195,6 +202,65 @@ function App() {
     if (typeof window === 'undefined') return;
     localStorage.setItem('settings:temperature', String(temperature));
   }, [temperature]);
+
+  // Load crawler config when settings drawer opens
+  useEffect(() => {
+    if (!settingsOpen) return;
+    (async () => {
+      try {
+        const res = await fetch('/admin/crawler/config');
+        if (res.ok) {
+          const cfg = await res.json();
+          setCrawlerAllSpaces(!!cfg.allSpaces);
+          setCrawlerSpaces(Array.isArray(cfg.spaces) ? cfg.spaces.join(',') : '');
+          setCrawlerPageSize(Number(cfg.pageSize || 50));
+          setCrawlerMaxPages(Number(cfg.maxPagesPerTick || 200));
+          setCrawlerConcurrency(Number(cfg.concurrency || 4));
+        }
+      } catch {}
+    })();
+  }, [settingsOpen]);
+
+  const refreshSpaces = async () => {
+    try {
+      const res = await fetch('/admin/confluence/spaces');
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableSpaces(Array.isArray(data.spaces) ? data.spaces : []);
+      }
+    } catch {}
+  };
+
+  const saveCrawlerConfig = async () => {
+    const body = {
+      allSpaces: crawlerAllSpaces,
+      spaces: crawlerAllSpaces ? [] : crawlerSpaces.split(',').map(s => s.trim()).filter(Boolean),
+      pageSize: crawlerPageSize,
+      maxPagesPerTick: crawlerMaxPages,
+      concurrency: crawlerConcurrency
+    };
+    const res = await fetch('/admin/crawler/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) alert('Failed to save crawler config');
+  };
+
+  const triggerSync = async () => {
+    const body: any = {};
+    if (!crawlerAllSpaces) {
+      body.spaces = crawlerSpaces.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+    body.pageSize = crawlerPageSize;
+    body.maxPages = crawlerMaxPages;
+    const res = await fetch('/admin/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) alert('Sync failed');
+  };
 
   // Check server health and connection status
   const checkHealth = async () => {
@@ -915,6 +981,102 @@ function App() {
                     />
                     <span className="range-value">{temperature.toFixed(1)}</span>
                   </div>
+                </div>
+              </div>
+
+              {/* Crawler Settings */}
+              <div className="settings-section">
+                <h3>Crawler</h3>
+                <div className="setting-group">
+                  <label htmlFor="crawler-allspaces">
+                    <span>Crawl all spaces</span>
+                    <span className="setting-description">If enabled, ignores the spaces list and crawls all spaces</span>
+                  </label>
+                  <input
+                    id="crawler-allspaces"
+                    type="checkbox"
+                    checked={crawlerAllSpaces}
+                    onChange={(e) => setCrawlerAllSpaces(e.target.checked)}
+                  />
+                </div>
+                <div className="setting-group">
+                  <label htmlFor="crawler-spaces">
+                    <span>Spaces</span>
+                    <span className="setting-description">Comma-separated list of space keys</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      id="crawler-spaces"
+                      type="text"
+                      placeholder="e.g., ENG,OPS"
+                      value={crawlerSpaces}
+                      onChange={(e) => setCrawlerSpaces(e.target.value)}
+                      className="text-input"
+                      disabled={crawlerAllSpaces}
+                    />
+                    <button className="header-button" type="button" onClick={refreshSpaces} title="Fetch spaces" aria-label="Fetch spaces">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                        <polyline points="23 4 23 10 17 10"/>
+                        <polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10M1 14l5.36 4.36A9 9 0 0 0 20.49 15"/>
+                      </svg>
+                    </button>
+                  </div>
+                  {availableSpaces.length > 0 && (
+                    <div className="setting-description">Available: {availableSpaces.join(', ')}</div>
+                  )}
+                </div>
+                <div className="setting-group">
+                  <label htmlFor="crawler-pagesize">
+                    <span>Page size</span>
+                    <span className="setting-description">Items per Confluence request (1–100)</span>
+                  </label>
+                  <input
+                    id="crawler-pagesize"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={crawlerPageSize}
+                    onChange={(e) => setCrawlerPageSize(Number(e.target.value))}
+                    className="text-input"
+                  />
+                </div>
+                <div className="setting-group">
+                  <label htmlFor="crawler-maxpages">
+                    <span>Max pages per run</span>
+                    <span className="setting-description">Upper bound processed per sync trigger</span>
+                  </label>
+                  <input
+                    id="crawler-maxpages"
+                    type="number"
+                    min={1}
+                    value={crawlerMaxPages}
+                    onChange={(e) => setCrawlerMaxPages(Number(e.target.value))}
+                    className="text-input"
+                  />
+                </div>
+                <div className="setting-group">
+                  <label htmlFor="crawler-concurrency">
+                    <span>Concurrency</span>
+                    <span className="setting-description">Parallel page indexing per process</span>
+                  </label>
+                  <input
+                    id="crawler-concurrency"
+                    type="number"
+                    min={1}
+                    max={64}
+                    value={crawlerConcurrency}
+                    onChange={(e) => setCrawlerConcurrency(Number(e.target.value))}
+                    className="text-input"
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="header-button" type="button" onClick={saveCrawlerConfig} title="Save crawler config" aria-label="Save crawler config">
+                    Save
+                  </button>
+                  <button className="header-button" type="button" onClick={triggerSync} title="Sync now" aria-label="Sync now">
+                    Sync Now
+                  </button>
                 </div>
               </div>
             </div>

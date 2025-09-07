@@ -17,6 +17,7 @@ Run
 - Start: `pnpm -F @app/mcp-server start`
 - Dev (uses built files): `pnpm -F @app/mcp-server dev`
 - All services: `pnpm dev` (runs mcp-server, web-ui in parallel)
+- Ingest (background crawl): `pnpm -F @app/mcp-server ingest` (runs one tick using `CRAWL_SPACES`)
 
 Environment
 - `MCP_PORT` / `MCP_HOST` — bind address (default `8787` / `127.0.0.1`)
@@ -44,6 +45,10 @@ Endpoints
 - `POST /rag/stream` — SSE RAG stream; yields `citations`, then `content`, then `done`
 - `POST /admin/sync` — crawl Confluence spaces into local store; body `{ spaces?: string[], updatedAfter?, maxPages?, pageSize? }`
 - `POST /admin/ingest` — ingest array of documents or Confluence API results; body `{ documents: DocumentSource[] }` or `{ confluence: { results: ConfluenceApiPage[] } }`
+
+Admin
+- Protect admin endpoints with `x-api-key: ${ADMIN_API_KEY}` or `Authorization: Bearer ${ADMIN_API_KEY}`.
+- Background ingestion can run as a separate process via `pnpm -F @app/mcp-server ingest`. Configure `CRAWL_SPACES`, `CRAWL_PAGE_SIZE`, `CRAWL_MAX_PAGES_PER_TICK`, and `CRAWL_CONCURRENCY`.
 
 Notes
 

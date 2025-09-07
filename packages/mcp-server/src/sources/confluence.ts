@@ -47,6 +47,19 @@ interface ConfluenceSearchResponse {
   totalSize?: number;
 }
 
+interface ConfluenceSpacesResponse {
+  results: Array<{
+    key: string;
+    name: string;
+    type?: string;
+    _links?: any;
+  }>;
+  start: number;
+  limit: number;
+  size: number;
+  totalSize?: number;
+}
+
 export class ConfluenceClient implements DocumentSourceClient {
   constructor(private config: ConfluenceConfig) {}
 
@@ -82,6 +95,30 @@ export class ConfluenceClient implements DocumentSourceClient {
     const apiPage: ConfluenceApiPage = await response.json();
     
     return this.apiPageToDocumentSource(apiPage);
+  }
+
+  // List all space keys (paginates the spaces endpoint)
+  async listAllSpaceKeys(): Promise<string[]> {
+    const keys: string[] = [];
+    let start = 0;
+    const limit = 50;
+
+    while (true) {
+      const params = new URLSearchParams({
+        start: String(start),
+        limit: String(limit)
+      });
+      const url = this.joinUrl(this.config.baseUrl, `/rest/api/space?${params}`);
+      console.log('Confluence API Request (space list):', url);
+      const response = await this.fetch(url);
+      const data: ConfluenceSpacesResponse = await response.json();
+      for (const s of data.results || []) keys.push(s.key);
+      if (!data.results || data.results.length < limit) break;
+      start = data.start + data.limit;
+    }
+
+    // Deduplicate while preserving order
+    return Array.from(new Set(keys));
   }
 
   // List pages by space without using CQL (paginates the content endpoint)
