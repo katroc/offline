@@ -81,9 +81,14 @@ export class LanceDBVectorStore implements VectorStore {
   }
 
   async initialize(): Promise<void> {
-    // LanceDB temporarily disabled - using mock implementation
-    console.log('LanceDB vector store temporarily disabled, using mock implementation');
-    throw new Error('LanceDB not available - falling back to mock store');
+    try {
+      const lancedb = await import('@lancedb/lancedb');
+      this.db = await lancedb.connect(this.config.dbPath);
+      console.log(`LanceDB initialized successfully at: ${this.config.dbPath}`);
+    } catch (error) {
+      console.error('Failed to initialize LanceDB:', error);
+      throw new Error(`LanceDB initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async upsertChunks(chunks: Chunk[]): Promise<void> {
@@ -94,21 +99,29 @@ export class LanceDBVectorStore implements VectorStore {
       const records = chunks.map(chunk => ({
         id: chunk.id,
         page_id: chunk.pageId,
-        space: chunk.space,
+        space: chunk.space || '',
         title: chunk.title,
-        section_anchor: chunk.sectionAnchor || null,
+        section_anchor: chunk.sectionAnchor || '', // Use empty string instead of null
         text: chunk.text,
         version: chunk.version,
         updated_at: chunk.updatedAt,
-        labels: chunk.labels,
-        vector: chunk.vector || []
+        labels: Array.isArray(chunk.labels) ? chunk.labels.join(',') : '', // Convert to comma-separated string
+        vector: Array.isArray(chunk.vector) ? chunk.vector : []
       }));
 
       if (!this.table) {
-        // Create table with first batch of records
-        this.table = await this.db.createTable(this.tableName, records);
-        console.log(`Created LanceDB table: ${this.tableName} with ${records.length} records`);
-      } else {
+        // Try to open existing table first, create if doesn't exist
+        try {
+          this.table = await this.db.openTable(this.tableName);
+          console.log(`Opened existing LanceDB table: ${this.tableName}`);
+        } catch (error) {
+          // Table doesn't exist, create it
+          this.table = await this.db.createTable(this.tableName, records);
+          console.log(`Created LanceDB table: ${this.tableName} with ${records.length} records`);
+        }
+      }
+      
+      if (this.table) {
         // Delete existing chunks for the same pages (upsert behavior)
         const pageIds = [...new Set(chunks.map(c => c.pageId))];
         for (const pageId of pageIds) {
@@ -165,7 +178,7 @@ export class LanceDBVectorStore implements VectorStore {
           text: record.text,
           version: record.version,
           updatedAt: record.updated_at,
-          labels: record.labels || [],
+          labels: record.labels ? record.labels.split(',').filter(Boolean) : [], // Convert back to array
           vector: record.vector
         },
         score: record._distance ? 1 - record._distance : 1 // Convert distance to similarity score

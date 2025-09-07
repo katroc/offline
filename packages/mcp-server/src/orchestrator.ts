@@ -7,6 +7,7 @@ import { MockVectorStore, LanceDBVectorStore } from './retrieval/vector-store.js
 import { SimpleChunker } from './retrieval/chunker.js';
 import { DefaultRAGPipeline } from './retrieval/pipeline.js';
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
+import { GoogleEmbedder } from './llm/google-embedder.js';
 
 // Singleton instances (in production, these would be properly managed)
 let ragPipeline: DefaultRAGPipeline | null = null;
@@ -69,7 +70,11 @@ async function getRagPipeline(): Promise<DefaultRAGPipeline> {
     // Initialize local doc store
     if (!localDocStore) localDocStore = new LocalDocStore();
 
-    ragPipeline = new DefaultRAGPipeline(confluenceClient, vectorStore, chunker, localDocStore);
+    // Initialize embedder with Google's new model
+    const embedder = new GoogleEmbedder();
+    console.log(`Initialized Google embedder with ${embedder.dimensions} dimensions`);
+
+    ragPipeline = new DefaultRAGPipeline(confluenceClient, vectorStore, chunker, localDocStore, embedder);
   }
   return ragPipeline;
 }
@@ -151,6 +156,7 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
 
     // Use Smart Pipeline by default, fall back to traditional pipeline if needed
     const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
+    console.log(`DEBUG: USE_SMART_PIPELINE="${process.env.USE_SMART_PIPELINE}", useSmartPipeline=${useSmartPipeline}`);
     
     let retrieval;
     if (useSmartPipeline) {
@@ -290,6 +296,7 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
 
     // Use Smart Pipeline by default, fall back to traditional pipeline if needed
     const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
+    console.log(`DEBUG: USE_SMART_PIPELINE="${process.env.USE_SMART_PIPELINE}", useSmartPipeline=${useSmartPipeline}`);
     
     let retrieval;
     if (useSmartPipeline) {
