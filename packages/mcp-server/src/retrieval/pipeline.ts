@@ -3,6 +3,8 @@ import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces
 import { LocalDocStore } from '../store/local-doc-store.js';
 import type { VectorStore, VectorSearchResult } from './vector-store.js';
 import type { Chunker } from './chunker.js';
+import type { Embedder } from './interfaces.js';
+import { GoogleEmbedder } from '../llm/google-embedder.js';
 import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
 
 export interface RAGPipeline {
@@ -17,17 +19,43 @@ export interface RetrievalResult {
 }
 
 export class DefaultRAGPipeline implements RAGPipeline {
+  private embedder: Embedder;
+
   constructor(
     private documentClient: DocumentSourceClient,
     private vectorStore: VectorStore,
     private chunker: Chunker,
-    private localDocStore?: LocalDocStore
-  ) {}
+    private localDocStore?: LocalDocStore,
+    embedder?: Embedder
+  ) {
+    this.embedder = embedder || new GoogleEmbedder();
+  }
 
   async retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, _conversationId?: string): Promise<RetrievalResult> {
     console.log(`RAG Pipeline: Retrieving for query "${query}" with filters:`, filters);
 
-    // 1. Get candidate documents
+    // 1. Try vector search first
+    try {
+      const queryEmbedding = await this.embedder.embed([query]);
+      if (queryEmbedding.length > 0) {
+        const vectorResults = await this.vectorStore.searchSimilar(queryEmbedding[0], filters, topK);
+        console.log(`Vector search found ${vectorResults.length} results`);
+        
+        // Check if results are actually relevant (similarity threshold)
+        const relevantResults = vectorResults.filter(result => result.score > 0.5); // Only keep high-similarity results
+        console.log(`Vector search: ${relevantResults.length}/${vectorResults.length} results above similarity threshold`);
+        
+        if (relevantResults.length > 0) {
+          const chunks = relevantResults.map(result => result.chunk);
+          const citations = this.chunksTocitations(chunks);
+          return { chunks, citations };
+        }
+      }
+    } catch (error) {
+      console.warn('Vector search failed, falling back to keyword search:', error);
+    }
+
+    // 2. Fallback to keyword-based document search
     let documents: DocumentSource[] = [];
     const preferLive = String(process.env.PREFER_LIVE_SEARCH || '').toLowerCase() === 'true';
 
@@ -85,6 +113,9 @@ export class DefaultRAGPipeline implements RAGPipeline {
 
     const rankedResults = await rankDocumentsByRelevance(query, documents, Math.min(topK, documents.length), model);
     console.log(`LLM ranked ${rankedResults.length} documents by relevance`);
+
+    // Index documents in background for future vector searches
+    this.indexDocumentsInBackground(documents);
 
     // 3. Chunk documents and score chunks by relevance to the query
     type ScoredChunk = { chunk: Chunk; docId: string; docScore: number; chunkScore: number; combined: number };
@@ -153,11 +184,19 @@ export class DefaultRAGPipeline implements RAGPipeline {
     // 2. Chunk the document
     const chunks = await this.chunker.chunkDocument(page, document.content);
 
-    // 3. Skip embedding for now - we're using LLM-based search instead
-    console.log(`Indexing ${chunks.length} chunks from document: ${document.title}`);
+    // 3. Generate embeddings for chunks
+    console.log(`Generating embeddings for ${chunks.length} chunks from document: ${document.title}`);
+    const texts = chunks.map(chunk => chunk.text);
+    const embeddings = await this.embedder.embed(texts);
     
-    // 4. Store chunks in vector store (without embeddings for now)
-    // await this.vectorStore.upsertChunks(chunks);
+    // 4. Add embeddings to chunks
+    for (let i = 0; i < chunks.length; i++) {
+      chunks[i].vector = embeddings[i];
+    }
+    
+    // 5. Store chunks with embeddings in vector store
+    await this.vectorStore.upsertChunks(chunks);
+    console.log(`Indexed ${chunks.length} chunks with embeddings for: ${document.title}`);
   }
 
   async deleteDocument(pageId: string): Promise<void> {
@@ -285,5 +324,23 @@ export class DefaultRAGPipeline implements RAGPipeline {
     }
 
     return citations;
+  }
+
+  /**
+   * Index documents in background for future vector searches
+   */
+  private async indexDocumentsInBackground(documents: DocumentSource[]): Promise<void> {
+    // Don't wait for this - run in background
+    setTimeout(async () => {
+      try {
+        console.log(`Background indexing ${documents.length} documents...`);
+        for (const doc of documents) {
+          await this.indexDocument(doc);
+        }
+        console.log(`Background indexing completed for ${documents.length} documents`);
+      } catch (error) {
+        console.warn('Background indexing failed:', error);
+      }
+    }, 100); // Small delay to not block the main response
   }
 }
