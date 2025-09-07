@@ -8,7 +8,14 @@ import { GoogleEmbedder } from '../llm/google-embedder.js';
 import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
 
 export interface RAGPipeline {
-  retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, conversationId?: string): Promise<RetrievalResult>;
+  retrieveForQuery(
+    queries: string | string[],
+    filters: Filters,
+    topK: number,
+    model?: string,
+    conversationId?: string,
+    intent?: { intent: string; confidence: number; normalizedQuery?: string }
+  ): Promise<RetrievalResult>;
   indexDocument(document: DocumentSource): Promise<void>;
   deleteDocument(pageId: string): Promise<void>;
 }
@@ -31,8 +38,34 @@ export class DefaultRAGPipeline implements RAGPipeline {
     this.embedder = embedder || new GoogleEmbedder();
   }
 
-  async retrieveForQuery(query: string, filters: Filters, topK: number, model?: string, _conversationId?: string): Promise<RetrievalResult> {
-    console.log(`RAG Pipeline: Retrieving for query "${query}" with filters:`, filters);
+  async retrieveForQuery(
+    queries: string | string[],
+    filters: Filters,
+    topK: number,
+    model?: string,
+    _conversationId?: string,
+    intent?: { intent: string; confidence: number; normalizedQuery?: string }
+  ): Promise<RetrievalResult> {
+    const variants = Array.isArray(queries) ? queries : [queries];
+    const maxFallbacks = Math.max(0, parseInt(process.env.MAX_FALLBACK_QUERIES || '3', 10) || 3);
+    const limited = variants.slice(0, 1 + maxFallbacks); // cap attempts
+    if (intent) {
+      console.log(`Default Pipeline intent: ${intent.intent} (conf=${intent.confidence?.toFixed?.(2) ?? intent.confidence})`);
+    }
+
+    let lastResult: RetrievalResult = { chunks: [], citations: [] };
+    for (let i = 0; i < limited.length; i++) {
+      const q = limited[i];
+      console.log(`RAG Pipeline: Attempt ${i + 1}/${limited.length} with query: "${q}"`);
+      const res = await this.retrieveSingleQuery(q, filters, topK, model);
+      if (res.chunks.length > 0) return res;
+      lastResult = res;
+    }
+    return lastResult;
+  }
+
+  private async retrieveSingleQuery(query: string, filters: Filters, topK: number, model?: string): Promise<RetrievalResult> {
+    console.log(`RAG Pipeline single-query retrieval for "${query}" with filters:`, filters);
 
     // 1. Try vector search first
     try {
@@ -40,7 +73,9 @@ export class DefaultRAGPipeline implements RAGPipeline {
       if (queryEmbedding.length > 0) {
         // Fetch more candidates than needed, then downselect with MMR
         const minCandidates = Math.max(topK, parseInt(process.env.MIN_VECTOR_RESULTS || '3', 10) || 3);
-        const candidateK = Math.min(Math.max(topK * 5, minCandidates), 50);
+        const maxCandidatesCap = Math.max(10, parseInt(process.env.MAX_VECTOR_CANDIDATES || '50', 10) || 50);
+        const poolMult = Math.max(2, parseInt(process.env.MMR_POOL_MULTIPLIER || String(topK * 2), 10) || topK * 5);
+        const candidateK = Math.min(Math.max(topK * 5, poolMult, minCandidates), maxCandidatesCap);
         const vectorResults = await this.vectorStore.searchSimilar(queryEmbedding[0], filters, candidateK);
         console.log(`Vector search candidates=${vectorResults.length} (requested ${candidateK})`);
 
@@ -52,7 +87,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
         const maxScore = vectorResults.reduce((m, r) => Math.max(m, r.score ?? 0), 0);
         const threshold = useAdaptive ? Math.max(baseThreshold, 0.6 * maxScore) : baseThreshold;
         const above = vectorResults.filter(r => r.score >= threshold).length;
-        console.log(`Vector search: ${above}/${vectorResults.length} >= threshold (${threshold}${useAdaptive ? ' adaptive' : ''})`);
+          console.log(`Vector search: ${above}/${vectorResults.length} >= threshold (${threshold}${useAdaptive ? ' adaptive' : ''})`);
 
         if (vectorResults.length > 0) {
           // Check global relevance threshold from environment before proceeding
@@ -232,7 +267,22 @@ export class DefaultRAGPipeline implements RAGPipeline {
 
     // 3. Generate embeddings for chunks
     console.log(`Generating embeddings for ${chunks.length} chunks from document: ${document.title}`);
-    const texts = chunks.map(chunk => chunk.text);
+    const includeTitle = String(process.env.EMBED_INCLUDE_TITLE || 'true').toLowerCase() !== 'false';
+    const titleWeight = Math.max(0, parseInt(process.env.EMBED_TITLE_WEIGHT || '2', 10) || 2);
+    const includeLabels = String(process.env.EMBED_INCLUDE_LABELS || 'false').toLowerCase() === 'true';
+    const includeAnchor = String(process.env.EMBED_INCLUDE_ANCHOR || 'false').toLowerCase() === 'true';
+    const buildEmbedText = (ch: Chunk) => {
+      const parts: string[] = [];
+      if (includeTitle && page.title) {
+        // Simple weighting by repetition to bias the vector slightly towards title semantics
+        parts.push(Array(Math.max(1, titleWeight)).fill(page.title).join('\n'));
+      }
+      if (includeAnchor && ch.sectionAnchor) parts.push(String(ch.sectionAnchor));
+      if (includeLabels && Array.isArray(page.labels) && page.labels.length > 0) parts.push(page.labels.join(' '));
+      parts.push(ch.text);
+      return parts.filter(Boolean).join('\n\n');
+    };
+    const texts = chunks.map(buildEmbedText);
     const embeddings = await this.embedder.embed(texts);
     
     // 4. Add embeddings to chunks
@@ -281,6 +331,8 @@ export class DefaultRAGPipeline implements RAGPipeline {
     }
 
     // Select remaining results based on MMR
+    const lambda = Number.isFinite(Number(process.env.MMR_LAMBDA)) ? Number(process.env.MMR_LAMBDA) : 0.7;
+    const lam = Math.max(0, Math.min(1, lambda));
     while (selected.length < topK && remaining.length > 0) {
       let bestIndex = 0;
       let bestScore = -Infinity;
@@ -299,8 +351,8 @@ export class DefaultRAGPipeline implements RAGPipeline {
         }
         const diversityScore = 1 - minSimilarity;
 
-        // MMR score: balance relevance and diversity (lambda = 0.7)
-        const mmrScore = 0.7 * relevanceScore + 0.3 * diversityScore;
+        // MMR score: balance relevance and diversity (lambda from env)
+        const mmrScore = lam * relevanceScore + (1 - lam) * diversityScore;
 
         if (mmrScore > bestScore) {
           bestScore = mmrScore;

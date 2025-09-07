@@ -10,6 +10,7 @@ import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
 import { GoogleEmbedder } from './llm/google-embedder.js';
 import { fileURLToPath } from 'url';
 import path from 'node:path';
+import { QueryIntentProcessor, QueryIntent } from './retrieval/query-intent-processor.js';
 
 // Singleton instances (in production, these would be properly managed)
 let ragPipeline: DefaultRAGPipeline | null = null;
@@ -164,6 +165,30 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
       updatedAfter: query.updatedAfter
     };
 
+    // Optional intent processing to normalize queries and generate fallbacks
+    const enableIntent = (process.env.ENABLE_INTENT_PROCESSING || 'true').toLowerCase() !== 'false';
+    const minIntentConf = isFinite(Number(process.env.INTENT_CONFIDENCE_THRESHOLD))
+      ? Number(process.env.INTENT_CONFIDENCE_THRESHOLD)
+      : 0.7;
+    const maxFallbacks = Math.max(0, parseInt(process.env.MAX_FALLBACK_QUERIES || '3', 10) || 3);
+    let queriesToTry: string[] = [query.question];
+    let intentCtx: { intent: string; confidence: number; normalizedQuery: string } | undefined;
+    if (enableIntent) {
+      const intentProcessor = new QueryIntentProcessor();
+      const intent = intentProcessor.processQuery(query.question);
+      intentCtx = { intent: intent.intent, confidence: intent.confidence, normalizedQuery: intent.normalizedQuery };
+      console.log(`Query intent: ${intent.intent} (confidence: ${intent.confidence.toFixed(2)})`);
+      console.log(`Normalized variant: "${intent.normalizedQuery}"`);
+
+      // Build query variants in priority order: original -> normalized (if different) -> fallbacks
+      const variants: string[] = [];
+      if (intent.normalizedQuery && intent.normalizedQuery !== query.question && intent.confidence >= minIntentConf) {
+        variants.push(intent.normalizedQuery);
+      }
+      const fallbacks = intent.fallbackQueries.slice(0, maxFallbacks);
+      queriesToTry = [query.question, ...variants, ...fallbacks].filter((v, i, a) => v && a.indexOf(v) === i);
+    }
+
     // Use Smart Pipeline by default, fall back to traditional pipeline if needed
     const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
     console.log(`DEBUG: USE_SMART_PIPELINE="${process.env.USE_SMART_PIPELINE}", useSmartPipeline=${useSmartPipeline}`);
@@ -171,17 +196,17 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
     if (useSmartPipeline) {
       console.log('Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+      retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
     } else {
       console.log('Using traditional pipeline');
       const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+      retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
       
       // If traditional pipeline returns no results, try Smart RAG as fallback
       if (retrieval.chunks.length === 0) {
         console.log('Traditional pipeline returned no results, trying Smart RAG as fallback');
         const smartPipe = await getSmartPipeline();
-        const smartRetrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+        const smartRetrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
         if (smartRetrieval.chunks.length > 0) {
           console.log(`Smart RAG fallback found ${smartRetrieval.chunks.length} relevant results`);
           retrieval = smartRetrieval;
@@ -321,6 +346,29 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
       updatedAfter: query.updatedAfter
     };
 
+    // Optional intent processing to normalize queries and generate fallbacks
+    const enableIntent = (process.env.ENABLE_INTENT_PROCESSING || 'true').toLowerCase() !== 'false';
+    const minIntentConf = isFinite(Number(process.env.INTENT_CONFIDENCE_THRESHOLD))
+      ? Number(process.env.INTENT_CONFIDENCE_THRESHOLD)
+      : 0.7;
+    const maxFallbacks = Math.max(0, parseInt(process.env.MAX_FALLBACK_QUERIES || '3', 10) || 3);
+    let queriesToTry: string[] = [query.question];
+    let intentCtx: { intent: string; confidence: number; normalizedQuery: string } | undefined;
+    if (enableIntent) {
+      const intentProcessor = new QueryIntentProcessor();
+      const intent = intentProcessor.processQuery(query.question);
+      intentCtx = { intent: intent.intent, confidence: intent.confidence, normalizedQuery: intent.normalizedQuery };
+      console.log(`Query intent: ${intent.intent} (confidence: ${intent.confidence.toFixed(2)})`);
+      console.log(`Normalized variant: "${intent.normalizedQuery}"`);
+
+      const variants: string[] = [];
+      if (intent.normalizedQuery && intent.normalizedQuery !== query.question && intent.confidence >= minIntentConf) {
+        variants.push(intent.normalizedQuery);
+      }
+      const fallbacks = intent.fallbackQueries.slice(0, maxFallbacks);
+      queriesToTry = [query.question, ...variants, ...fallbacks].filter((v, i, a) => v && a.indexOf(v) === i);
+    }
+
     // Use Smart Pipeline by default, fall back to traditional pipeline if needed
     const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
     console.log(`DEBUG: USE_SMART_PIPELINE="${process.env.USE_SMART_PIPELINE}", useSmartPipeline=${useSmartPipeline}`);
@@ -328,17 +376,17 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
     if (useSmartPipeline) {
       console.log('Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+      retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
     } else {
       console.log('Using traditional pipeline');
       const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+      retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
       
       // If traditional pipeline returns no results, try Smart RAG as fallback
       if (retrieval.chunks.length === 0) {
         console.log('Traditional pipeline returned no results, trying Smart RAG as fallback');
         const smartPipe = await getSmartPipeline();
-        const smartRetrieval = await smartPipe.retrieveForQuery(query.question, filters, query.topK, query.model, query.conversationId);
+        const smartRetrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
         if (smartRetrieval.chunks.length > 0) {
           console.log(`Smart RAG fallback found ${smartRetrieval.chunks.length} relevant results`);
           retrieval = smartRetrieval;
