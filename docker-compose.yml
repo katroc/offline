@@ -1,0 +1,52 @@
+services:
+  # Chroma vector database
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["*"]
+
+  # MCP Server (backend)
+  mcp-server:
+    build:
+      context: .
+      dockerfile: packages/mcp-server/Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      - MCP_PORT=8787
+      - MCP_HOST=0.0.0.0
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      - CHROMA_SSL=false
+      - CHROMA_COLLECTION=confluence_chunks
+      - VECTOR_STORE=chroma
+      - USE_SMART_PIPELINE=false
+    env_file:
+      - .env
+    depends_on:
+      - chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Web UI (frontend)
+  web-ui:
+    build:
+      context: .
+      dockerfile: packages/web-ui/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mcp-server
+
+volumes:
+  chroma-data:

@@ -1,0 +1,31 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.nyc_output
+coverage
+.nyc_output
+.coverage
+
+# Build outputs
+dist
+build
+.next
+
+# Development files
+*.log
+.DS_Store
+.vscode
+.idea
+
+# Docker files (avoid recursive copies)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Data directories
+data/
+*.db
+*.sqlite
