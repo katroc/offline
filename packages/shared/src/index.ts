@@ -21,6 +21,7 @@ export interface Chunk {
   vector?: number[]; // optional until embedded
   url?: string; // optional source URL for citations
   indexedAt?: string; // ISO8601 timestamp when stored in vector DB
+  metadata?: Record<string, any>; // optional metadata for enhanced chunking
 }
 
 export interface Citation {

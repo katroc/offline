@@ -7,6 +7,7 @@ import { MockVectorStore, LanceDBVectorStore, ChromaVectorStore } from './retrie
 import { SimpleChunker } from './retrieval/chunker.js';
 import { DefaultRAGPipeline } from './retrieval/pipeline.js';
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
+import { OptimizedRAGIntegration } from './retrieval/optimized-rag-integration.js';
 import { GoogleEmbedder } from './llm/google-embedder.js';
 import { fileURLToPath } from 'url';
 import path from 'node:path';
@@ -14,6 +15,7 @@ import { QueryIntentProcessor, QueryIntent } from './retrieval/query-intent-proc
 
 // Singleton instances (in production, these would be properly managed)
 let ragPipeline: DefaultRAGPipeline | null = null;
+let optimizedPipeline: OptimizedRAGIntegration | null = null;
 let smartPipeline: SmartRAGPipeline | null = null;
 let localDocStore: LocalDocStore | null = null;
 
@@ -30,6 +32,73 @@ async function getSmartPipeline(): Promise<SmartRAGPipeline> {
     console.log('Initialized Smart RAG Pipeline with LLM document analysis');
   }
   return smartPipeline;
+}
+
+async function getOptimizedPipeline(): Promise<OptimizedRAGIntegration> {
+  if (!optimizedPipeline) {
+    // First ensure we have the default pipeline as fallback
+    const fallbackPipeline = await getRagPipeline();
+    
+    // Initialize document source client
+    const confluenceClient = new ConfluenceClient({
+      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
+      username: process.env.CONFLUENCE_USERNAME || '',
+      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
+    });
+
+    // Use same vector store setup as default pipeline
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const useRealVectorDB = process.env.USE_REAL_VECTORDB !== 'false';
+    const vectorStoreType = process.env.VECTOR_STORE || 'chroma'; // Default to Chroma for optimized pipeline
+    
+    let vectorStore;
+    if (useRealVectorDB && vectorStoreType.toLowerCase() === 'chroma') {
+      vectorStore = new ChromaVectorStore({
+        host: process.env.CHROMA_HOST,
+        port: process.env.CHROMA_PORT ? parseInt(process.env.CHROMA_PORT, 10) : undefined,
+        ssl: process.env.CHROMA_SSL === 'true',
+        collectionName: process.env.CHROMA_COLLECTION || 'optimized_chunks',
+        auth: process.env.CHROMA_AUTH_PROVIDER && process.env.CHROMA_AUTH_CREDENTIALS ? {
+          provider: process.env.CHROMA_AUTH_PROVIDER as 'token' | 'basic',
+          credentials: process.env.CHROMA_AUTH_CREDENTIALS
+        } : undefined
+      });
+      try {
+        await vectorStore.initialize();
+        console.log(`✅ Initialized optimized Chroma vector store`);
+      } catch (error) {
+        console.warn('Failed to initialize Chroma for optimized pipeline:', error);
+        vectorStore = new MockVectorStore();
+      }
+    } else {
+      console.log('Using mock vector store for optimized pipeline');
+      vectorStore = new MockVectorStore();
+    }
+
+    // Initialize chunker (will be upgraded by optimized pipeline)
+    const chunker = new SimpleChunker({
+      targetChunkSize: 800,
+      overlap: 200,
+      maxChunkSize: 1200
+    });
+
+    // Get local doc store
+    if (!localDocStore) localDocStore = new LocalDocStore();
+
+    // Create optimized integration
+    optimizedPipeline = new OptimizedRAGIntegration(
+      confluenceClient,
+      vectorStore,
+      chunker,
+      localDocStore,
+      fallbackPipeline
+    );
+
+    await optimizedPipeline.initialize();
+    console.log('🚀 Initialized OptimizedRAG Integration');
+  }
+  return optimizedPipeline;
 }
 
 async function getRagPipeline(): Promise<DefaultRAGPipeline> {
@@ -203,16 +272,34 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
       queriesToTry = [query.question, ...variants, ...fallbacks].filter((v, i, a) => v && a.indexOf(v) === i);
     }
 
-    // Use Smart Pipeline by default, fall back to traditional pipeline if needed
+    // Pipeline selection logic - optimized disabled for now due to TypeScript errors
+    const useOptimizedPipeline = process.env.USE_OPTIMIZED_PIPELINE === 'true'; // Disabled by default for now
     const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
-    console.log(`DEBUG: USE_SMART_PIPELINE="${process.env.USE_SMART_PIPELINE}", useSmartPipeline=${useSmartPipeline}`);
+    console.log(`🔍 Pipeline selection: OPTIMIZED=${useOptimizedPipeline} (disabled), SMART=${useSmartPipeline}`);
+    
     let retrieval;
-    if (useSmartPipeline) {
-      console.log('Using Smart Pipeline with LLM document analysis');
+    if (useOptimizedPipeline) {
+      console.log('🚀 Using OptimizedRAG Pipeline with advanced embeddings and chunking');
+      try {
+        const optimizedPipe = await getOptimizedPipeline();
+        retrieval = await optimizedPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+        console.log(`✅ OptimizedRAG returned ${retrieval.chunks.length} chunks`);
+      } catch (error) {
+        console.warn('⚠️ OptimizedRAG failed, falling back to Smart Pipeline:', error);
+        if (useSmartPipeline) {
+          const smartPipe = await getSmartPipeline();
+          retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+        } else {
+          const pipeline = await getRagPipeline();
+          retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+        }
+      }
+    } else if (useSmartPipeline) {
+      console.log('🧠 Using Smart Pipeline with LLM document analysis');
       const smartPipe = await getSmartPipeline();
       retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
     } else {
-      console.log('Using traditional pipeline');
+      console.log('📚 Using traditional pipeline');
       const pipeline = await getRagPipeline();
       retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
       
