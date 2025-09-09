@@ -27,7 +27,7 @@ Built as a monorepo with clean separation of concerns:
 - **MCP Server**: Node.js/Fastify backend with RAG pipeline
 - **Web UI**: React/Vite frontend with chat interface
 - **Shared Types**: Common interfaces across packages
-- **Local Storage**: LanceDB vector store with document indexing
+- **Vector Storage**: Chroma vector database for document indexing
 
 ## 📊 Current Status
 
@@ -52,7 +52,8 @@ cabin/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Node.js 20+** and **pnpm 9+**
+- **Docker & Docker Compose** (recommended setup)
+- **Node.js 20+** and **pnpm 9+** (for development)
 - **Local LLM** (LM Studio, Ollama, or OpenAI-compatible server)
 - **Optional**: Confluence access for live data sync
 
@@ -68,12 +69,40 @@ cp .env.example .env
 # Edit .env with your LLM and Confluence settings
 ```
 
+**Important:** Make sure Docker and Docker Compose are installed and running on your system.
+
 ### 2️⃣ Start the Application
+
+#### Option A: Docker (Recommended)
 ```bash
+# Start all services with one command (includes Chroma vector DB)
+pnpm start
+
+# OR use Docker Compose directly
+docker-compose up -d
+
+# View logs
+pnpm run docker:logs
+
+# Stop services
+pnpm run docker:down
+
+# Rebuild containers (after code changes)
+pnpm run docker:build
+
+# Restart services
+pnpm run docker:restart
+```
+
+#### Option B: Development Mode
+```bash
+# Start Chroma separately (requires Docker)
+docker-compose up -d chroma
+
 # Build all packages
 pnpm build
 
-# Start in development mode (recommended)
+# Start in development mode
 pnpm dev
 
 # OR start production mode
@@ -82,9 +111,10 @@ pnpm -F @app/web-ui preview    # Frontend on :4173
 ```
 
 ### 3️⃣ Access the Interface
-- **Web UI**: http://localhost:4173 (production) or http://localhost:5173 (dev)
+- **Web UI**: http://localhost:3000 (Docker) or http://localhost:5173 (dev)
 - **API Health**: http://localhost:8787/health
 - **Available Models**: http://localhost:8787/models
+- **Chroma DB**: http://localhost:8000/api/v2/heartbeat
 
 ## 💡 Usage Examples
 
@@ -220,8 +250,9 @@ node tools/ingest-confluence.mjs --space DEV --maxPages 100 --server http://127.
 - Verify the model is loaded in your LLM server
 
 #### "Connection refused" errors
-- Check if the MCP server is running on the correct port
-- Verify firewall settings aren't blocking the connection
+- Check if services are running: `docker-compose ps`
+- Restart services: `pnpm run docker:restart`
+- Check logs: `pnpm run docker:logs`
 - Ensure `MCP_PORT` and `MCP_HOST` are configured correctly
 
 #### "No search results" or empty responses
@@ -229,10 +260,16 @@ node tools/ingest-confluence.mjs --space DEV --maxPages 100 --server http://127.
 - Check if documents have been ingested: http://localhost:8787/health
 - Try using the ingestion tool to add documents manually
 
-#### Vector database issues  
-- Delete `./data/lancedb` to reset the vector store
-- Set `USE_REAL_VECTORDB=false` to use mock storage
-- Check disk permissions for the data directory
+#### Docker issues
+- Ensure Docker and Docker Compose are installed and running
+- Check Docker daemon is running: `docker version`
+- Restart Docker service if needed
+- Remove containers and restart: `docker-compose down && pnpm start`
+
+#### Chroma vector database issues  
+- Check Chroma is running: http://localhost:8000/api/v2/heartbeat
+- Reset Chroma data: `docker-compose down && docker volume rm offline_chroma-data`
+- Check container logs: `docker-compose logs chroma`
 
 ### Getting Help
 

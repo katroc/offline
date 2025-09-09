@@ -5,36 +5,46 @@ interface LoadingProgressProps {
   query: string;
   space?: string;
   labels?: string[];
+  isLLMMode?: boolean;
 }
 
-const basePhases = [
-  'Preparing query filters',
-  'Searching documentation',
-  'Ranking relevant results',
-  'Extracting sections',
-  'Drafting answer',
+const ragPhases = [
+  'Initializing vector search',
+  'Querying Chroma database', 
+  'Ranking relevant chunks',
+  'Extracting context',
+  'Generating AI response',
 ];
 
-export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, labels }) => {
+const llmPhases = [
+  'Processing query',
+  'Generating response',
+];
+
+export const LoadingProgress: React.FC<LoadingProgressProps> = ({ query, space, labels, isLLMMode }) => {
   const [step, setStep] = useState(0);
 
   const phases = useMemo(() => {
-    const arr = [...basePhases];
-    return arr;
-  }, []);
+    return isLLMMode ? llmPhases : ragPhases;
+  }, [isLLMMode]);
+
+  const title = useMemo(() => {
+    return isLLMMode ? 'Generating response' : 'Searching documentation and generating response';
+  }, [isLLMMode]);
 
   useEffect(() => {
     setStep(0);
+    const interval = isLLMMode ? 800 : 1100; // Faster for LLM mode since fewer steps
     const id = window.setInterval(() => {
       setStep((s) => (s < phases.length - 1 ? s + 1 : s));
-    }, 1100);
+    }, interval);
     return () => window.clearInterval(id);
-  }, [query, space, labels, phases]);
+  }, [query, space, labels, phases, isLLMMode]);
 
   return (
     <div className="loading-details" aria-live="polite">
       <div className="loading-title">
-        <span>Searching documentation and generating response</span>
+        <span>{title}</span>
         <span className="dots" aria-hidden>
           <span>.</span>
           <span>.</span>
