@@ -194,7 +194,8 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
         answer: `Mock answer for: ${query.question} (Configure LLM_BASE_URL and CONFLUENCE_* env vars for full RAG)`, 
         citations: mockCitations,
         displayCitations,
-        citationIndexMap: indexMap
+        citationIndexMap: indexMap,
+        usedCitationIndexes: []
       };
     }
 
@@ -233,10 +234,11 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
     try {
     const answer = await chatCompletion([system, user], { model: query.model });
     const { displayCitations, indexMap } = dedupeCitations(mockCitations);
-    return { answer, citations: mockCitations, displayCitations, citationIndexMap: indexMap };
+    const used = extractUsedCitationDisplayIndexes(answer, mockCitations.length, indexMap);
+    return { answer, citations: mockCitations, displayCitations, citationIndexMap: indexMap, usedCitationIndexes: used };
     } catch (err) {
       console.warn('LLM call failed:', err);
-      return { answer: `Mock answer for: ${query.question} (LLM call failed: ${err instanceof Error ? err.message : 'Unknown error'})`, citations: mockCitations };
+      return { answer: `Mock answer for: ${query.question} (LLM call failed: ${err instanceof Error ? err.message : 'Unknown error'})`, citations: mockCitations, usedCitationIndexes: [] };
     }
   }
 
@@ -336,7 +338,8 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
         answer: `Retrieved ${retrieval.chunks.length} chunks for: ${query.question}`, 
         citations: retrieval.citations,
         displayCitations,
-        citationIndexMap: indexMap
+        citationIndexMap: indexMap,
+        usedCitationIndexes: []
       };
     }
 
@@ -376,7 +379,8 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
       answer = `${answer}\n\nSources: [1]`;
     }
     const { displayCitations, indexMap } = dedupeCitations(retrieval.citations);
-    return { answer, citations: retrieval.citations, displayCitations, citationIndexMap: indexMap };
+    const used = extractUsedCitationDisplayIndexes(answer, retrieval.citations.length, indexMap);
+    return { answer, citations: retrieval.citations, displayCitations, citationIndexMap: indexMap, usedCitationIndexes: used };
 
   } catch (err) {
     console.warn('RAG query failed:', err);
@@ -442,8 +446,16 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
     };
 
     try {
+      let acc = '';
       for await (const chunk of chatCompletionStream([system, user], { model: query.model })) {
+        acc += chunk;
         yield { type: 'content', content: chunk };
+      }
+      // Compute used citation indexes for mock streaming path
+      const { indexMap } = dedupeCitations(citations);
+      const used = extractUsedCitationDisplayIndexes(acc, citations.length, indexMap);
+      if (used.length > 0) {
+        yield { type: 'used', usedCitationIndexes: used } as any;
       }
       yield { type: 'done' };
     } catch (err) {
@@ -578,8 +590,15 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
     };
 
     try {
+      let acc = '';
       for await (const chunk of chatCompletionStream([system, user], { model: query.model })) {
+        acc += chunk;
         yield { type: 'content', content: chunk };
+      }
+      // Emit used display indices before done, if any
+      const used = extractUsedCitationDisplayIndexes(acc, citations.length, indexMap);
+      if (used.length > 0) {
+        yield { type: 'used', usedCitationIndexes: used } as any;
       }
       yield { type: 'done' };
     } catch (err) {
@@ -637,4 +656,33 @@ function dedupeCitations(citations: Citation[]): { displayCitations: Citation[];
   });
 
   return { displayCitations: merged.map(m => m.citation), indexMap };
+}
+
+// Parse [n] references from the answer and map to display indices using citationIndexMap.
+// Returns unique, sorted 1-based display indices.
+function extractUsedCitationDisplayIndexes(answer: string, originalCount: number, indexMap?: number[]): number[] {
+  try {
+    const re = /\[(\d+)\]/g;
+    const seen = new Set<number>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(answer)) !== null) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isNaN(n) && n >= 1 && n <= originalCount) {
+        seen.add(n);
+      }
+    }
+    // Map to display using indexMap if provided
+    const mapped = new Set<number>();
+    for (const n of Array.from(seen).sort((a, b) => a - b)) {
+      if (indexMap && indexMap.length >= n) {
+        const disp = (indexMap[n - 1] ?? (n - 1)) + 1; // to 1-based
+        mapped.add(disp);
+      } else {
+        mapped.add(n);
+      }
+    }
+    return Array.from(mapped).sort((a, b) => a - b);
+  } catch {
+    return [];
+  }
 }
