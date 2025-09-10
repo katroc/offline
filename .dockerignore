@@ -9,10 +9,12 @@ coverage
 .nyc_output
 .coverage
 
-# Build outputs
+# Build outputs (keep package dists for Docker COPY)
 dist
 build
 .next
+!packages/web-ui/dist
+!packages/mcp-server/dist
 
 # Development files
 *.log
