@@ -50,8 +50,6 @@ export interface RagResponse {
   displayCitations?: Citation[];
   // Optional: map from original citation index -> displayCitations index
   citationIndexMap?: number[];
-  // Optional: which citation numbers (display indices, 1-based) are actually used in the answer
-  usedCitationIndexes?: number[];
 }
 
 export interface Filters {
