@@ -24,6 +24,7 @@ interface Message {
     snippet?: string;
   }>;
   citationIndexMap?: number[]; // original index -> display index
+  usedCitationIndexes?: number[]; // display indices used in answer
 }
 
 interface Conversation {
@@ -662,7 +663,7 @@ function App() {
         url: string;
         sectionAnchor?: string;
         snippet?: string;
-      }>; citationIndexMap?: number[] } = await response.json();
+      }>; citationIndexMap?: number[]; usedCitationIndexes?: number[] } = await response.json();
 
       const assistantMessage: Message = {
         id: assistantMessageId,
@@ -670,7 +671,8 @@ function App() {
         content: result.answer,
         citations: result.citations,
         displayCitations: result.displayCitations,
-        citationIndexMap: result.citationIndexMap
+        citationIndexMap: result.citationIndexMap,
+        usedCitationIndexes: result.usedCitationIndexes
       };
 
       setConversations(prev => {
@@ -909,6 +911,7 @@ function App() {
                   citations={message.citations || []}
                   displayCitations={message.displayCitations}
                   citationIndexMap={message.citationIndexMap}
+                  usedCitationIndexes={message.usedCitationIndexes}
                   query={index > 0 ? (current?.messages[index - 1]?.content || '') : ''}
                   animate={animatingMessageId === message.id}
                 />
