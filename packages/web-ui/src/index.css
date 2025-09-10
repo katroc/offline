@@ -1366,7 +1366,7 @@ input[type="number"] {
   /* Fallback for browsers without color-mix support */
   background: var(--bg-secondary);
   background: color-mix(in oklab, var(--bg-secondary) 70%, transparent);
-  align-items: center; /* align input and button */
+  align-items: center; /* Center-align toggle and input */
   position: sticky; /* Back to sticky to avoid overlap */
   bottom: var(--space-3);
   backdrop-filter: var(--blur-bg);
@@ -1384,8 +1384,12 @@ input[type="number"] {
 .input-left-controls {
   display: flex;
   align-items: center;
+  justify-content: center;
   padding-left: var(--space-1);
-  width: 60px;
+  padding-right: var(--space-2);
+  width: auto; /* Auto-size to fit the toggle content */
+  min-width: 70px; /* Minimum width for proper spacing */
+  flex-shrink: 0; /* Don't shrink the toggle area */
 }
 
 .rag-bypass-toggle {
@@ -1447,7 +1451,8 @@ input[type="number"] {
   font-weight: 600;
   color: var(--text-muted);
   transition: all 0.2s ease;
-  width: 100%;
+  width: auto; /* Auto-size instead of 100% */
+  min-width: 48px; /* Match toggle switch width */
 }
 
 .mode-text {

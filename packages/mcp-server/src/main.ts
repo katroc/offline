@@ -403,6 +403,147 @@ app.put('/admin/crawler/config', async (req, reply) => {
   }
 });
 
+// RAG Settings - Get current RAG pipeline environment variables
+app.get('/admin/rag/config', async (req, reply) => {
+  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  try {
+    const config = {
+      // Pipeline Selection
+      useOptimizedPipeline: process.env.USE_OPTIMIZED_PIPELINE === 'true',
+      useSmartPipeline: process.env.USE_SMART_PIPELINE !== 'false',
+      
+      // Relevance Settings
+      relevanceThreshold: parseFloat(process.env.RELEVANCE_THRESHOLD || '0.05'),
+      adaptiveThreshold: process.env.ADAPTIVE_THRESHOLD === 'true',
+      
+      // Vector Search Settings
+      mmrLambda: parseFloat(process.env.MMR_LAMBDA || '0.7'),
+      maxVectorCandidates: parseInt(process.env.MAX_VECTOR_CANDIDATES || '50', 10),
+      minVectorResults: parseInt(process.env.MIN_VECTOR_RESULTS || '3', 10),
+      mmrPoolMultiplier: parseInt(process.env.MMR_POOL_MULTIPLIER || '5', 10),
+      
+      // Embedding Settings
+      embedIncludeTitle: process.env.EMBED_INCLUDE_TITLE !== 'false',
+      embedTitleWeight: parseInt(process.env.EMBED_TITLE_WEIGHT || '2', 10),
+      embedIncludeLabels: process.env.EMBED_INCLUDE_LABELS === 'true',
+      embedIncludeAnchor: process.env.EMBED_INCLUDE_ANCHOR === 'true',
+      
+      // Query Processing
+      enableIntentProcessing: process.env.ENABLE_INTENT_PROCESSING !== 'false',
+      maxFallbackQueries: parseInt(process.env.MAX_FALLBACK_QUERIES || '3', 10),
+      intentConfidenceThreshold: parseFloat(process.env.INTENT_CONFIDENCE_THRESHOLD || '0.7'),
+      
+      // Advanced Settings
+      chunkTtlDays: parseInt(process.env.CHUNK_TTL_DAYS || '7', 10),
+      minKeywordScore: parseFloat(process.env.MIN_KEYWORD_SCORE || '0.0'),
+      preferLiveSearch: process.env.PREFER_LIVE_SEARCH === 'true'
+    };
+    return reply.send(config);
+  } catch (e) {
+    return reply.code(500).send({ error: 'failed to load RAG config' });
+  }
+});
+
+// RAG Settings - Update RAG pipeline environment variables
+app.put('/admin/rag/config', async (req, reply) => {
+  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  try {
+    const body = (req.body as any) || {};
+    
+    // Update environment variables with validation
+    if (typeof body.useOptimizedPipeline === 'boolean') {
+      process.env.USE_OPTIMIZED_PIPELINE = String(body.useOptimizedPipeline);
+    }
+    if (typeof body.useSmartPipeline === 'boolean') {
+      process.env.USE_SMART_PIPELINE = String(body.useSmartPipeline);
+    }
+    
+    // Relevance Settings
+    if (typeof body.relevanceThreshold === 'number' && body.relevanceThreshold >= 0 && body.relevanceThreshold <= 1) {
+      process.env.RELEVANCE_THRESHOLD = String(body.relevanceThreshold);
+    }
+    if (typeof body.adaptiveThreshold === 'boolean') {
+      process.env.ADAPTIVE_THRESHOLD = String(body.adaptiveThreshold);
+    }
+    
+    // Vector Search Settings
+    if (typeof body.mmrLambda === 'number' && body.mmrLambda >= 0 && body.mmrLambda <= 1) {
+      process.env.MMR_LAMBDA = String(body.mmrLambda);
+    }
+    if (typeof body.maxVectorCandidates === 'number' && body.maxVectorCandidates >= 1 && body.maxVectorCandidates <= 200) {
+      process.env.MAX_VECTOR_CANDIDATES = String(body.maxVectorCandidates);
+    }
+    if (typeof body.minVectorResults === 'number' && body.minVectorResults >= 1 && body.minVectorResults <= 50) {
+      process.env.MIN_VECTOR_RESULTS = String(body.minVectorResults);
+    }
+    if (typeof body.mmrPoolMultiplier === 'number' && body.mmrPoolMultiplier >= 1 && body.mmrPoolMultiplier <= 20) {
+      process.env.MMR_POOL_MULTIPLIER = String(body.mmrPoolMultiplier);
+    }
+    
+    // Embedding Settings
+    if (typeof body.embedIncludeTitle === 'boolean') {
+      process.env.EMBED_INCLUDE_TITLE = String(body.embedIncludeTitle);
+    }
+    if (typeof body.embedTitleWeight === 'number' && body.embedTitleWeight >= 1 && body.embedTitleWeight <= 10) {
+      process.env.EMBED_TITLE_WEIGHT = String(body.embedTitleWeight);
+    }
+    if (typeof body.embedIncludeLabels === 'boolean') {
+      process.env.EMBED_INCLUDE_LABELS = String(body.embedIncludeLabels);
+    }
+    if (typeof body.embedIncludeAnchor === 'boolean') {
+      process.env.EMBED_INCLUDE_ANCHOR = String(body.embedIncludeAnchor);
+    }
+    
+    // Query Processing
+    if (typeof body.enableIntentProcessing === 'boolean') {
+      process.env.ENABLE_INTENT_PROCESSING = String(body.enableIntentProcessing);
+    }
+    if (typeof body.maxFallbackQueries === 'number' && body.maxFallbackQueries >= 1 && body.maxFallbackQueries <= 10) {
+      process.env.MAX_FALLBACK_QUERIES = String(body.maxFallbackQueries);
+    }
+    if (typeof body.intentConfidenceThreshold === 'number' && body.intentConfidenceThreshold >= 0 && body.intentConfidenceThreshold <= 1) {
+      process.env.INTENT_CONFIDENCE_THRESHOLD = String(body.intentConfidenceThreshold);
+    }
+    
+    // Advanced Settings
+    if (typeof body.chunkTtlDays === 'number' && body.chunkTtlDays >= 0) {
+      process.env.CHUNK_TTL_DAYS = String(body.chunkTtlDays);
+    }
+    if (typeof body.minKeywordScore === 'number' && body.minKeywordScore >= 0 && body.minKeywordScore <= 1) {
+      process.env.MIN_KEYWORD_SCORE = String(body.minKeywordScore);
+    }
+    if (typeof body.preferLiveSearch === 'boolean') {
+      process.env.PREFER_LIVE_SEARCH = String(body.preferLiveSearch);
+    }
+    
+    // Return updated config
+    const updatedConfig = {
+      useOptimizedPipeline: process.env.USE_OPTIMIZED_PIPELINE === 'true',
+      useSmartPipeline: process.env.USE_SMART_PIPELINE !== 'false',
+      relevanceThreshold: parseFloat(process.env.RELEVANCE_THRESHOLD || '0.05'),
+      adaptiveThreshold: process.env.ADAPTIVE_THRESHOLD === 'true',
+      mmrLambda: parseFloat(process.env.MMR_LAMBDA || '0.7'),
+      maxVectorCandidates: parseInt(process.env.MAX_VECTOR_CANDIDATES || '50', 10),
+      minVectorResults: parseInt(process.env.MIN_VECTOR_RESULTS || '3', 10),
+      mmrPoolMultiplier: parseInt(process.env.MMR_POOL_MULTIPLIER || '5', 10),
+      embedIncludeTitle: process.env.EMBED_INCLUDE_TITLE !== 'false',
+      embedTitleWeight: parseInt(process.env.EMBED_TITLE_WEIGHT || '2', 10),
+      embedIncludeLabels: process.env.EMBED_INCLUDE_LABELS === 'true',
+      embedIncludeAnchor: process.env.EMBED_INCLUDE_ANCHOR === 'true',
+      enableIntentProcessing: process.env.ENABLE_INTENT_PROCESSING !== 'false',
+      maxFallbackQueries: parseInt(process.env.MAX_FALLBACK_QUERIES || '3', 10),
+      intentConfidenceThreshold: parseFloat(process.env.INTENT_CONFIDENCE_THRESHOLD || '0.7'),
+      chunkTtlDays: parseInt(process.env.CHUNK_TTL_DAYS || '7', 10),
+      minKeywordScore: parseFloat(process.env.MIN_KEYWORD_SCORE || '0.0'),
+      preferLiveSearch: process.env.PREFER_LIVE_SEARCH === 'true'
+    };
+    
+    return reply.send(updatedConfig);
+  } catch (e) {
+    return reply.code(400).send({ error: 'invalid RAG config' });
+  }
+});
+
 // Vector store stats (diagnostics): row count and recent indexed_at
 app.get('/admin/vector/stats', async (req, reply) => {
   if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
