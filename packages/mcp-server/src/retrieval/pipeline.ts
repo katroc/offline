@@ -76,7 +76,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
         const maxCandidatesCap = Math.max(10, parseInt(process.env.MAX_VECTOR_CANDIDATES || '50', 10) || 50);
         const poolMult = Math.max(2, parseInt(process.env.MMR_POOL_MULTIPLIER || String(topK * 2), 10) || topK * 5);
         const candidateK = Math.min(Math.max(topK * 5, poolMult, minCandidates), maxCandidatesCap);
-        const vectorResults = await this.vectorStore.searchSimilar(queryEmbedding[0], filters, candidateK);
+        const vectorResults = await this.vectorStore.searchSimilar(queryEmbedding[0], filters, candidateK, query);
         console.log(`Vector search candidates=${vectorResults.length} (requested ${candidateK})`);
 
         // Dynamic threshold (optional informational logging)
@@ -93,7 +93,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
           // Check global relevance threshold from environment before proceeding
           const envThreshold = isFinite(Number(process.env.RELEVANCE_THRESHOLD)) 
             ? Number(process.env.RELEVANCE_THRESHOLD) 
-            : 0.2; // Much more permissive default for general questions
+            : 0.05; // Very permissive default for cosine distance-based similarity
           const maxVectorScore = Math.max(...vectorResults.map(r => r.score ?? 0));
           
           if (maxVectorScore <= envThreshold - 0.001) { // Allow small precision tolerance
@@ -186,7 +186,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
     // Check global relevance threshold for keyword search results  
     const envThreshold = isFinite(Number(process.env.RELEVANCE_THRESHOLD)) 
       ? Number(process.env.RELEVANCE_THRESHOLD) 
-      : 0.2; // Much more permissive default for general questions
+      : 0.05; // Very permissive default for general questions
     const globalThreshold = envThreshold;
     const maxDocumentScore = rankedResults.length > 0 ? Math.max(...rankedResults.map(r => r.relevanceScore)) : 0;
     
@@ -333,13 +333,15 @@ export class DefaultRAGPipeline implements RAGPipeline {
     // Select remaining results based on MMR
     const lambda = Number.isFinite(Number(process.env.MMR_LAMBDA)) ? Number(process.env.MMR_LAMBDA) : 0.7;
     const lam = Math.max(0, Math.min(1, lambda));
+    
     while (selected.length < topK && remaining.length > 0) {
       let bestIndex = 0;
       let bestScore = -Infinity;
+      const candidates: { index: number; score: number; id: string }[] = [];
 
       for (let i = 0; i < remaining.length; i++) {
         const candidate = remaining[i];
-        const relevanceScore = candidate.score;
+        const relevanceScore = candidate.score || 0;
 
         // Calculate diversity score (minimum similarity to already selected)
         let minSimilarity = 1.0;
@@ -347,23 +349,51 @@ export class DefaultRAGPipeline implements RAGPipeline {
           if (candidate.chunk.vector && selectedResult.chunk.vector) {
             const similarity = this.cosineSimilarity(candidate.chunk.vector, selectedResult.chunk.vector);
             minSimilarity = Math.min(minSimilarity, similarity);
+          } else {
+            // Fallback to text-based diversity when vectors unavailable
+            const textSim = this.textSimilarity(candidate.chunk.text, selectedResult.chunk.text);
+            minSimilarity = Math.min(minSimilarity, textSim);
           }
         }
         const diversityScore = 1 - minSimilarity;
 
         // MMR score: balance relevance and diversity (lambda from env)
         const mmrScore = lam * relevanceScore + (1 - lam) * diversityScore;
-
-        if (mmrScore > bestScore) {
-          bestScore = mmrScore;
-          bestIndex = i;
-        }
+        
+        candidates.push({ index: i, score: mmrScore, id: candidate.chunk.id });
       }
 
+      // Sort candidates by score, then by ID for deterministic tie-breaking
+      candidates.sort((a, b) => {
+        if (Math.abs(a.score - b.score) < 0.0001) { // Tie-breaking for very close scores
+          return a.id.localeCompare(b.id);
+        }
+        return b.score - a.score;
+      });
+
+      bestIndex = candidates[0].index;
       selected.push(remaining.splice(bestIndex, 1)[0]);
+      
+      // Adjust remaining indices after removal
+      for (let j = 0; j < candidates.length; j++) {
+        if (candidates[j].index > bestIndex) {
+          candidates[j].index--;
+        }
+      }
     }
 
     return selected;
+  }
+
+  private textSimilarity(text1: string, text2: string): number {
+    // Simple text similarity using word overlap for diversity calculation
+    const words1 = new Set(text1.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    const words2 = new Set(text2.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    
+    const intersection = new Set([...words1].filter(w => words2.has(w)));
+    const union = new Set([...words1, ...words2]);
+    
+    return union.size > 0 ? intersection.size / union.size : 0;
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {

@@ -5,7 +5,7 @@ import { ConfluenceClient } from './sources/confluence.js';
 import { LocalDocStore } from './store/local-doc-store.js';
 import { MockVectorStore, LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
 import { SimpleChunker } from './retrieval/chunker.js';
-import { DefaultRAGPipeline } from './retrieval/pipeline.js';
+import { DefaultRAGPipeline, type RetrievalResult } from './retrieval/pipeline.js';
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
 import { OptimizedRAGIntegration } from './retrieval/optimized-rag-integration.js';
 import { GoogleEmbedder } from './llm/google-embedder.js';
@@ -86,7 +86,7 @@ async function getOptimizedPipeline(): Promise<OptimizedRAGIntegration> {
     // Get local doc store
     if (!localDocStore) localDocStore = new LocalDocStore();
 
-    // Create optimized integration
+    // Create optimized integration with same embedder as fallback
     optimizedPipeline = new OptimizedRAGIntegration(
       confluenceClient,
       vectorStore,
@@ -272,48 +272,63 @@ export async function ragQuery(query: ValidRagQuery): Promise<RagResponse> {
       queriesToTry = [query.question, ...variants, ...fallbacks].filter((v, i, a) => v && a.indexOf(v) === i);
     }
 
-    // Pipeline selection logic - optimized disabled for now due to TypeScript errors
-    const useOptimizedPipeline = process.env.USE_OPTIMIZED_PIPELINE === 'true'; // Disabled by default for now
-    const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
-    console.log(`🔍 Pipeline selection: OPTIMIZED=${useOptimizedPipeline} (disabled), SMART=${useSmartPipeline}`);
+    // Clean, deterministic pipeline selection logic
+    const useOptimizedPipeline = process.env.USE_OPTIMIZED_PIPELINE === 'true';
+    const useSmartFallback = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
+    console.log(`🔍 Pipeline selection: OPTIMIZED=${useOptimizedPipeline}, SMART_FALLBACK=${useSmartFallback}`);
     
-    let retrieval;
+    let retrieval: RetrievalResult | undefined;
+    let pipelineUsed = 'unknown';
+    
+    // Primary: Try Optimized Pipeline if enabled
     if (useOptimizedPipeline) {
-      console.log('🚀 Using OptimizedRAG Pipeline with advanced embeddings and chunking');
+      console.log('🚀 Trying OptimizedRAG Pipeline with advanced embeddings and chunking...');
       try {
         const optimizedPipe = await getOptimizedPipeline();
         retrieval = await optimizedPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
-        console.log(`✅ OptimizedRAG returned ${retrieval.chunks.length} chunks`);
-      } catch (error) {
-        console.warn('⚠️ OptimizedRAG failed, falling back to Smart Pipeline:', error);
-        if (useSmartPipeline) {
-          const smartPipe = await getSmartPipeline();
-          retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+        
+        if (retrieval.chunks.length > 0) {
+          console.log(`✅ OptimizedRAG succeeded with ${retrieval.chunks.length} chunks`);
+          pipelineUsed = 'optimized';
         } else {
-          const pipeline = await getRagPipeline();
-          retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+          console.log('⚠️ OptimizedRAG returned no results, falling back...');
+          retrieval = undefined; // Clear for fallback
         }
-      }
-    } else if (useSmartPipeline) {
-      console.log('🧠 Using Smart Pipeline with LLM document analysis');
-      const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
-    } else {
-      console.log('📚 Using traditional pipeline');
-      const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
-      
-      // If traditional pipeline returns no results, try Smart RAG as fallback
-      if (retrieval.chunks.length === 0) {
-        console.log('Traditional pipeline returned no results, trying Smart RAG as fallback');
-        const smartPipe = await getSmartPipeline();
-        const smartRetrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
-        if (smartRetrieval.chunks.length > 0) {
-          console.log(`Smart RAG fallback found ${smartRetrieval.chunks.length} relevant results`);
-          retrieval = smartRetrieval;
-        }
+      } catch (error) {
+        console.warn('⚠️ OptimizedRAG failed with error, falling back:', error);
+        retrieval = undefined; // Clear for fallback
       }
     }
+    
+    // Fallback: Smart Pipeline if no results from optimized or if optimized disabled
+    if (!retrieval && useSmartFallback) {
+      console.log('🧠 Using Smart Pipeline with LLM document analysis...');
+      try {
+        const smartPipe = await getSmartPipeline();
+        retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+        
+        if (retrieval.chunks.length > 0) {
+          console.log(`✅ Smart Pipeline succeeded with ${retrieval.chunks.length} chunks`);
+          pipelineUsed = 'smart';
+        } else {
+          console.log('⚠️ Smart Pipeline returned no results');
+        }
+      } catch (error) {
+        console.warn('⚠️ Smart Pipeline failed:', error);
+        retrieval = undefined;
+      }
+    }
+    
+    // Final fallback: Traditional pipeline (always available)
+    if (!retrieval) {
+      console.log('📚 Using traditional pipeline as final fallback...');
+      const pipeline = await getRagPipeline();
+      retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+      pipelineUsed = 'traditional';
+      console.log(`Traditional pipeline returned ${retrieval.chunks.length} chunks`);
+    }
+    
+    console.log(`📊 Final result: ${retrieval.chunks.length} chunks from ${pipelineUsed} pipeline`);
 
     if (!useLlm) {
       const { displayCitations, indexMap } = dedupeCitations(retrieval.citations);
@@ -470,30 +485,56 @@ export async function* ragQueryStream(query: ValidRagQuery): AsyncGenerator<{ ty
       queriesToTry = [query.question, ...variants, ...fallbacks].filter((v, i, a) => v && a.indexOf(v) === i);
     }
 
-    // Use Smart Pipeline by default, fall back to traditional pipeline if needed
-    const useSmartPipeline = process.env.USE_SMART_PIPELINE !== 'false'; // Default to true
-    console.log(`DEBUG: USE_SMART_PIPELINE="${process.env.USE_SMART_PIPELINE}", useSmartPipeline=${useSmartPipeline}`);
-    let retrieval;
-    if (useSmartPipeline) {
-      console.log('Using Smart Pipeline with LLM document analysis');
-      const smartPipe = await getSmartPipeline();
-      retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
-    } else {
-      console.log('Using traditional pipeline');
-      const pipeline = await getRagPipeline();
-      retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
-      
-      // If traditional pipeline returns no results, try Smart RAG as fallback
-      if (retrieval.chunks.length === 0) {
-        console.log('Traditional pipeline returned no results, trying Smart RAG as fallback');
-        const smartPipe = await getSmartPipeline();
-        const smartRetrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
-        if (smartRetrieval.chunks.length > 0) {
-          console.log(`Smart RAG fallback found ${smartRetrieval.chunks.length} relevant results`);
-          retrieval = smartRetrieval;
+    // Use same pipeline selection logic as non-streaming version
+    const useOptimizedPipeline = process.env.USE_OPTIMIZED_PIPELINE === 'true';
+    const useSmartFallback = process.env.USE_SMART_PIPELINE !== 'false';
+    console.log(`🔍 Streaming pipeline selection: OPTIMIZED=${useOptimizedPipeline}, SMART_FALLBACK=${useSmartFallback}`);
+    
+    let retrieval: RetrievalResult | undefined;
+    let pipelineUsed = 'unknown';
+    
+    // Primary: Try Optimized Pipeline if enabled
+    if (useOptimizedPipeline) {
+      try {
+        const optimizedPipe = await getOptimizedPipeline();
+        retrieval = await optimizedPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+        
+        if (retrieval.chunks.length > 0) {
+          pipelineUsed = 'optimized';
+        } else {
+          retrieval = undefined;
         }
+      } catch (error) {
+        console.warn('OptimizedRAG failed in streaming, falling back:', error);
+        retrieval = undefined;
       }
     }
+    
+    // Fallback: Smart Pipeline if no results from optimized
+    if (!retrieval && useSmartFallback) {
+      try {
+        const smartPipe = await getSmartPipeline();
+        retrieval = await smartPipe.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+        
+        if (retrieval.chunks.length > 0) {
+          pipelineUsed = 'smart';
+        } else {
+          retrieval = undefined;
+        }
+      } catch (error) {
+        console.warn('Smart Pipeline failed in streaming:', error);
+        retrieval = undefined;
+      }
+    }
+    
+    // Final fallback: Traditional pipeline
+    if (!retrieval) {
+      const pipeline = await getRagPipeline();
+      retrieval = await pipeline.retrieveForQuery(queriesToTry, filters, query.topK, query.model, query.conversationId, intentCtx);
+      pipelineUsed = 'traditional';
+    }
+    
+    console.log(`📊 Streaming result: ${retrieval.chunks.length} chunks from ${pipelineUsed} pipeline`);
 
     citations = retrieval.citations;
     const { displayCitations, indexMap } = dedupeCitations(citations);

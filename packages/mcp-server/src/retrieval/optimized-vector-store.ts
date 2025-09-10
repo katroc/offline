@@ -60,17 +60,65 @@ export class OptimizedVectorStore {
     private config: VectorStoreConfig,
     chromaUrl: string = 'http://chroma:8000'
   ) {
-    // Use deprecated 'path' for simplicity; host/port/ssl also supported
     this.client = new ChromaClient({ path: chromaUrl });
   }
 
   async initialize(): Promise<void> {
-    // Initialize collections for different vector spaces
-    for (const [spaceId, spaceConfig] of Object.entries(this.config.spaceConfigs)) {
-      // If using a single space, honor CHROMA_COLLECTION for compatibility with existing data
-      const name = (!this.config.enableMultipleSpaces && process.env.CHROMA_COLLECTION)
-        ? String(process.env.CHROMA_COLLECTION)
-        : `documents_${spaceId}`;
+    try {
+      // Test ChromaDB connection
+      await this.client.heartbeat();
+      console.log('✅ ChromaDB connection verified');
+      
+      // Initialize collections for different vector spaces
+      for (const [spaceId, spaceConfig] of Object.entries(this.config.spaceConfigs)) {
+        // If using a single space, honor CHROMA_COLLECTION for compatibility with existing data
+        const name = (!this.config.enableMultipleSpaces && process.env.CHROMA_COLLECTION)
+          ? String(process.env.CHROMA_COLLECTION)
+          : `documents_${spaceId}`;
+        
+        try {
+          const collection = await this.client.getOrCreateCollection({
+            name,
+            metadata: {
+              description: spaceConfig.description,
+            },
+            // Avoid DefaultEmbeddingFunction requirement; we provide embeddings directly
+            embeddingFunction: null,
+          });
+          this.collections.set(spaceId, collection);
+          console.log(`✅ Initialized optimized collection: ${name}`);
+        } catch (error) {
+          console.warn(`Failed to initialize collection ${name}:`, error);
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to initialize OptimizedVectorStore:', error);
+      throw new Error(`OptimizedVectorStore initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async ensureCollection(spaceId: string): Promise<void> {
+    if (this.collections.has(spaceId)) {
+      return;
+    }
+
+    // Use default configuration for spaces not explicitly configured
+    const defaultConfig = {
+      description: `Document space: ${spaceId}`,
+      embeddingDimension: 384,
+      distanceFunction: 'cosine' as const,
+      indexType: 'hnsw' as const
+    };
+
+    const spaceConfig = this.config.spaceConfigs[spaceId] || defaultConfig;
+    
+    // If using a single space, honor CHROMA_COLLECTION for compatibility with existing data
+    const name = (!this.config.enableMultipleSpaces && process.env.CHROMA_COLLECTION)
+      ? String(process.env.CHROMA_COLLECTION)
+      : `documents_${spaceId}`;
+      
+    try {
       const collection = await this.client.getOrCreateCollection({
         name,
         metadata: {
@@ -80,6 +128,10 @@ export class OptimizedVectorStore {
         embeddingFunction: null,
       });
       this.collections.set(spaceId, collection);
+      console.log(`✅ Created/retrieved collection: ${name}`);
+    } catch (error) {
+      console.error(`Failed to create collection for space ${spaceId}:`, error);
+      throw error;
     }
   }
 
@@ -88,9 +140,15 @@ export class OptimizedVectorStore {
     embeddings: EnhancedEmbedding[],
     spaceId: string = 'default'
   ): Promise<void> {
-    const collection = this.collections.get(spaceId);
+    // Get or create collection on-demand
+    let collection = this.collections.get(spaceId);
     if (!collection) {
-      throw new Error(`Collection for space ${spaceId} not found`);
+      console.log(`Creating collection for space: ${spaceId}`);
+      await this.ensureCollection(spaceId);
+      collection = this.collections.get(spaceId);
+      if (!collection) {
+        throw new Error(`Failed to create collection for space ${spaceId}`);
+      }
     }
 
     if (this.config.enableBatching) {
@@ -204,9 +262,15 @@ export class OptimizedVectorStore {
       return this.cache.get(cacheKey)!;
     }
 
-    const collection = this.collections.get(spaceId);
+    // Get or create collection on-demand
+    let collection = this.collections.get(spaceId);
     if (!collection) {
-      throw new Error(`Collection for space ${spaceId} not found`);
+      console.log(`Creating collection for search in space: ${spaceId}`);
+      await this.ensureCollection(spaceId);
+      collection = this.collections.get(spaceId);
+      if (!collection) {
+        throw new Error(`Failed to create collection for space ${spaceId}`);
+      }
     }
 
     let finalK = k;
@@ -509,9 +573,21 @@ export class OptimizedVectorStore {
       ? queryEmbedding 
       : (queryEmbedding as EnhancedEmbedding).dense;
     
-    // Use first few dimensions and options as cache key
-    const embeddingKey = embedding.slice(0, 10).map(x => Math.round(x * 1000)).join(',');
-    const optionsKey = JSON.stringify(options);
+    // Create a more robust hash using full embedding
+    // Use a simple hash function to avoid crypto dependency
+    const hashEmbedding = (arr: number[]): string => {
+      let hash = 0;
+      const str = arr.map(x => Math.round(x * 10000)).join(',');
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+      }
+      return hash.toString(36);
+    };
+    
+    const embeddingKey = hashEmbedding(embedding);
+    const optionsKey = JSON.stringify(options, Object.keys(options).sort());
     
     return `${embeddingKey}-${optionsKey}`;
   }
