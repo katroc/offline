@@ -7,7 +7,7 @@ export interface VectorSearchResult {
 
 export interface VectorStore {
   upsertChunks(chunks: Chunk[]): Promise<void>;
-  searchSimilar(vector: number[], filters: Filters, topK: number): Promise<VectorSearchResult[]>;
+  searchSimilar(vector: number[], filters: Filters, topK: number, query?: string): Promise<VectorSearchResult[]>;
   deleteByPageId(pageId: string): Promise<void>;
   initialize(): Promise<void>;
 }
@@ -44,7 +44,7 @@ export class MockVectorStore implements VectorStore {
     }
   }
 
-  async searchSimilar(vector: number[], filters: Filters, topK: number): Promise<VectorSearchResult[]> {
+  async searchSimilar(vector: number[], filters: Filters, topK: number, query?: string): Promise<VectorSearchResult[]> {
     const allChunks = Array.from(this.chunks.values());
     
     // Apply filters
@@ -74,16 +74,53 @@ export class MockVectorStore implements VectorStore {
       });
     }
 
-    // Mock similarity scoring (random for now)
+    // Mock similarity scoring using deterministic text similarity
     const results: VectorSearchResult[] = filtered
       .map(chunk => ({
         chunk,
-        score: Math.random() // Mock similarity score
+        score: this.calculateMockSimilarity(vector, chunk, query)
       }))
       .sort((a, b) => b.score - a.score) // Sort by descending score
       .slice(0, topK);
 
     return results;
+  }
+
+  private calculateMockSimilarity(vector: number[], chunk: Chunk, query?: string): number {
+    // Use deterministic similarity based on text content and vector
+    let score = 0.5; // Base score
+    
+    // Add text-based similarity if query is provided
+    if (query) {
+      const queryLower = query.toLowerCase();
+      const textLower = chunk.text.toLowerCase();
+      const titleLower = chunk.title.toLowerCase();
+      
+      // Exact phrase matches get highest score
+      if (textLower.includes(queryLower) || titleLower.includes(queryLower)) {
+        score += 0.4;
+      }
+      
+      // Word-level matches
+      const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
+      const textWords = new Set(textLower.split(/\s+/));
+      const titleWords = new Set(titleLower.split(/\s+/));
+      
+      const textMatches = queryWords.filter(w => textWords.has(w)).length;
+      const titleMatches = queryWords.filter(w => titleWords.has(w)).length;
+      
+      score += (textMatches / Math.max(queryWords.length, 1)) * 0.2;
+      score += (titleMatches / Math.max(queryWords.length, 1)) * 0.3;
+    }
+    
+    // Add deterministic pseudo-randomness based on chunk ID for consistent ordering
+    const hashCode = chunk.id.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    score += (Math.abs(hashCode) % 100) / 1000; // Add small deterministic variation
+    
+    return Math.min(1.0, Math.max(0.0, score));
   }
 
   async deleteByPageId(pageId: string): Promise<void> {
@@ -215,7 +252,7 @@ export class LanceDBVectorStore implements VectorStore {
     }
   }
 
-  async searchSimilar(vector: number[], filters: Filters, topK: number): Promise<VectorSearchResult[]> {
+  async searchSimilar(vector: number[], filters: Filters, topK: number, query?: string): Promise<VectorSearchResult[]> {
     if (!this.table) {
       await this.ensureTable();
     }
@@ -522,7 +559,7 @@ export class ChromaVectorStore implements VectorStore {
     }
   }
 
-  async searchSimilar(vector: number[], filters: Filters, topK: number): Promise<VectorSearchResult[]> {
+  async searchSimilar(vector: number[], filters: Filters, topK: number, query?: string): Promise<VectorSearchResult[]> {
     if (!this.collection) {
       console.warn('Chroma collection not initialized, returning empty results');
       return [];

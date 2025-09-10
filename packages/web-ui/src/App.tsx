@@ -114,6 +114,40 @@ function App() {
   const [topK, setTopK] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:topK')) || 5 : 5));
   const [temperature, setTemperature] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:temperature')) || 0.7 : 0.7));
   const [ragBypass, setRagBypass] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('settings:ragBypass') === 'true' : false));
+  
+  // RAG Settings state
+  const [ragConfig, setRagConfig] = useState({
+    // Pipeline Selection
+    useOptimizedPipeline: true,
+    useSmartPipeline: true,
+    
+    // Relevance Settings
+    relevanceThreshold: 0.05,
+    adaptiveThreshold: false,
+    
+    // Vector Search Settings
+    mmrLambda: 0.7,
+    maxVectorCandidates: 50,
+    minVectorResults: 3,
+    mmrPoolMultiplier: 5,
+    
+    // Embedding Settings
+    embedIncludeTitle: true,
+    embedTitleWeight: 2,
+    embedIncludeLabels: false,
+    embedIncludeAnchor: false,
+    
+    // Query Processing
+    enableIntentProcessing: true,
+    maxFallbackQueries: 3,
+    intentConfidenceThreshold: 0.7,
+    
+    // Advanced Settings
+    chunkTtlDays: 7,
+    minKeywordScore: 0.0,
+    preferLiveSearch: false
+  });
+  
   // Crawler config state (admin)
   const [crawlerAllSpaces, setCrawlerAllSpaces] = useState(true);
   const [crawlerSpaces, setCrawlerSpaces] = useState('');
@@ -216,9 +250,11 @@ function App() {
   }, [ragBypass]);
 
 
-  // Load crawler config when settings drawer opens
+  // Load crawler config and RAG settings when settings drawer opens
   useEffect(() => {
     if (!settingsOpen) return;
+    
+    // Load crawler config
     (async () => {
       try {
         const res = await fetch('/admin/crawler/config');
@@ -229,6 +265,17 @@ function App() {
           setCrawlerPageSize(Number(cfg.pageSize || 50));
           setCrawlerMaxPages(Number(cfg.maxPagesPerTick || 200));
           setCrawlerConcurrency(Number(cfg.concurrency || 4));
+        }
+      } catch {}
+    })();
+    
+    // Load RAG config
+    (async () => {
+      try {
+        const res = await fetch('/admin/rag/config');
+        if (res.ok) {
+          const config = await res.json();
+          setRagConfig(config);
         }
       } catch {}
     })();
@@ -288,6 +335,25 @@ function App() {
       }
     } catch (error) {
       showNotification('Error starting sync', 'error');
+    }
+  };
+
+  const saveRagConfig = async () => {
+    try {
+      const res = await fetch('/admin/rag/config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(ragConfig)
+      });
+      if (res.ok) {
+        const updatedConfig = await res.json();
+        setRagConfig(updatedConfig);
+        showNotification('RAG settings saved successfully!', 'success');
+      } else {
+        showNotification('Failed to save RAG settings', 'error');
+      }
+    } catch {
+      showNotification('Error saving RAG settings', 'error');
     }
   };
 
@@ -1034,6 +1100,197 @@ function App() {
                     />
                     <span className="range-value">{temperature.toFixed(1)}</span>
                   </div>
+                </div>
+              </div>
+
+              {/* RAG Pipeline Settings */}
+              <div className="settings-section">
+                <h3>RAG Pipeline Settings</h3>
+                
+                {/* Pipeline Selection */}
+                <div className="setting-group checkbox-group">
+                  <label htmlFor="optimized-pipeline">
+                    <span>Use Optimized Pipeline</span>
+                    <span className="setting-description">Enable advanced embeddings and chunking optimizations</span>
+                  </label>
+                  <input
+                    id="optimized-pipeline"
+                    type="checkbox"
+                    checked={ragConfig.useOptimizedPipeline}
+                    onChange={(e) => setRagConfig({...ragConfig, useOptimizedPipeline: e.target.checked})}
+                  />
+                </div>
+                
+                <div className="setting-group checkbox-group">
+                  <label htmlFor="smart-fallback">
+                    <span>Enable Smart Fallback</span>
+                    <span className="setting-description">Use pure LLM analysis when vector search returns no results</span>
+                  </label>
+                  <input
+                    id="smart-fallback"
+                    type="checkbox"
+                    checked={ragConfig.useSmartPipeline}
+                    onChange={(e) => setRagConfig({...ragConfig, useSmartPipeline: e.target.checked})}
+                  />
+                </div>
+
+                {/* Relevance Settings */}
+                <div className="setting-group">
+                  <label htmlFor="relevance-threshold">
+                    <span>Relevance Threshold</span>
+                    <span className="setting-description">Minimum similarity score to consider results relevant (0.01-1.0)</span>
+                  </label>
+                  <div className="range-input-group">
+                    <input
+                      id="relevance-threshold"
+                      type="range"
+                      min="0.01"
+                      max="1"
+                      step="0.01"
+                      value={ragConfig.relevanceThreshold}
+                      onChange={(e) => setRagConfig({...ragConfig, relevanceThreshold: Number(e.target.value)})}
+                      className="range-input"
+                    />
+                    <span className="range-value">{ragConfig.relevanceThreshold.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="setting-group checkbox-group">
+                  <label htmlFor="adaptive-threshold">
+                    <span>Adaptive Threshold</span>
+                    <span className="setting-description">Dynamically adjust threshold based on query results</span>
+                  </label>
+                  <input
+                    id="adaptive-threshold"
+                    type="checkbox"
+                    checked={ragConfig.adaptiveThreshold}
+                    onChange={(e) => setRagConfig({...ragConfig, adaptiveThreshold: e.target.checked})}
+                  />
+                </div>
+
+                {/* Vector Search Settings */}
+                <div className="setting-group">
+                  <label htmlFor="mmr-lambda">
+                    <span>Diversity vs Relevance</span>
+                    <span className="setting-description">Balance between relevance and diversity (0.0=diverse, 1.0=relevant)</span>
+                  </label>
+                  <div className="range-input-group">
+                    <input
+                      id="mmr-lambda"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={ragConfig.mmrLambda}
+                      onChange={(e) => setRagConfig({...ragConfig, mmrLambda: Number(e.target.value)})}
+                      className="range-input"
+                    />
+                    <span className="range-value">{ragConfig.mmrLambda.toFixed(1)}</span>
+                  </div>
+                </div>
+
+                <div className="setting-group">
+                  <label htmlFor="max-candidates">
+                    <span>Max Vector Candidates</span>
+                    <span className="setting-description">Maximum documents to consider from vector search</span>
+                  </label>
+                  <div className="range-input-group">
+                    <input
+                      id="max-candidates"
+                      type="range"
+                      min="10"
+                      max="200"
+                      value={ragConfig.maxVectorCandidates}
+                      onChange={(e) => setRagConfig({...ragConfig, maxVectorCandidates: Number(e.target.value)})}
+                      className="range-input"
+                    />
+                    <span className="range-value">{ragConfig.maxVectorCandidates}</span>
+                  </div>
+                </div>
+
+                {/* Embedding Settings */}
+                <div className="setting-group checkbox-group">
+                  <label htmlFor="embed-titles">
+                    <span>Include Titles in Embeddings</span>
+                    <span className="setting-description">Add document titles to embeddings for better matching</span>
+                  </label>
+                  <input
+                    id="embed-titles"
+                    type="checkbox"
+                    checked={ragConfig.embedIncludeTitle}
+                    onChange={(e) => setRagConfig({...ragConfig, embedIncludeTitle: e.target.checked})}
+                  />
+                </div>
+
+                <div className="setting-group">
+                  <label htmlFor="title-weight">
+                    <span>Title Weight</span>
+                    <span className="setting-description">How much to emphasize titles in embeddings (1-10)</span>
+                  </label>
+                  <div className="range-input-group">
+                    <input
+                      id="title-weight"
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={ragConfig.embedTitleWeight}
+                      onChange={(e) => setRagConfig({...ragConfig, embedTitleWeight: Number(e.target.value)})}
+                      className="range-input"
+                    />
+                    <span className="range-value">{ragConfig.embedTitleWeight}</span>
+                  </div>
+                </div>
+
+                <div className="setting-group checkbox-group">
+                  <label htmlFor="embed-labels">
+                    <span>Include Labels in Embeddings</span>
+                    <span className="setting-description">Add Confluence labels to embeddings</span>
+                  </label>
+                  <input
+                    id="embed-labels"
+                    type="checkbox"
+                    checked={ragConfig.embedIncludeLabels}
+                    onChange={(e) => setRagConfig({...ragConfig, embedIncludeLabels: e.target.checked})}
+                  />
+                </div>
+
+                {/* Query Processing */}
+                <div className="setting-group checkbox-group">
+                  <label htmlFor="intent-processing">
+                    <span>Enable Intent Processing</span>
+                    <span className="setting-description">Analyze query intent for better results</span>
+                  </label>
+                  <input
+                    id="intent-processing"
+                    type="checkbox"
+                    checked={ragConfig.enableIntentProcessing}
+                    onChange={(e) => setRagConfig({...ragConfig, enableIntentProcessing: e.target.checked})}
+                  />
+                </div>
+
+                <div className="setting-group">
+                  <label htmlFor="max-fallbacks">
+                    <span>Max Query Variants</span>
+                    <span className="setting-description">Maximum number of query reformulations to try</span>
+                  </label>
+                  <div className="range-input-group">
+                    <input
+                      id="max-fallbacks"
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={ragConfig.maxFallbackQueries}
+                      onChange={(e) => setRagConfig({...ragConfig, maxFallbackQueries: Number(e.target.value)})}
+                      className="range-input"
+                    />
+                    <span className="range-value">{ragConfig.maxFallbackQueries}</span>
+                  </div>
+                </div>
+
+                <div className="settings-action-buttons">
+                  <button className="settings-action-button" type="button" onClick={saveRagConfig} title="Save RAG settings" aria-label="Save RAG settings">
+                    Save RAG Settings
+                  </button>
                 </div>
               </div>
 

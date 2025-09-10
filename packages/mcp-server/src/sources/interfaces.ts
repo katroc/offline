@@ -2,6 +2,8 @@ export interface DocumentSource {
   id: string;
   title: string;
   spaceKey: string;
+  // Added for optimized pipeline compatibility
+  space?: string;
   version: number;
   labels: string[];
   updatedAt: string; // ISO8601
