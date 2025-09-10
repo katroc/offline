@@ -202,8 +202,6 @@ app.post('/rag/stream', async (req, reply) => {
           ...payload,
           meta: { request: { space, labels, updatedAfter, topK, model } }
         })}\n\n`);
-      } else if ((chunk as any).type === 'used') {
-        reply.raw.write(`data: ${JSON.stringify({ type: 'used', usedCitationIndexes: (chunk as any).usedCitationIndexes })}\n\n`);
       } else if (chunk.type === 'content') {
         reply.raw.write(`data: ${JSON.stringify({ 
           type: 'content', 

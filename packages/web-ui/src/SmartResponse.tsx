@@ -47,7 +47,6 @@ interface SmartResponseProps {
   citations: Citation[];
   displayCitations?: Citation[];
   citationIndexMap?: number[];
-  usedCitationIndexes?: number[]; // display indices (1-based) from server
   query: string;
   animate?: boolean;
 }
@@ -60,7 +59,7 @@ interface ResponseSection {
   icon?: string;
 }
 
-export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations, displayCitations, citationIndexMap, usedCitationIndexes, query, animate = false }) => {
+export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations, displayCitations, citationIndexMap, query, animate = false }) => {
   const [activeCitation, setActiveCitation] = React.useState<number | null>(null);
   const hoverTimeoutRef = React.useRef<number | null>(null);
   const citationRefs = React.useRef<Record<number, HTMLDivElement | null>>({});
@@ -265,7 +264,59 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
     return out;
   };
 
-  // (Deprecated) client-side dedupe removed to enforce a single method.
+  // Build a unique, consolidated citations list while preserving numbering
+  // semantics: each unique source (pageId+url) maps to its first occurrence index.
+  type UniqueCitation = { citation: Citation; firstIndex: number };
+
+  const buildUniqueCitations = (
+    sourceList: Citation[],
+    fullList: Citation[]
+  ): UniqueCitation[] => {
+    const byKey = new Map<string, UniqueCitation & { snippetSet: string[] }>();
+
+    const keyOf = (c: Citation) => `${c.pageId}|${c.url}`;
+
+    // Helper to cap snippet length similar to server (~400 chars)
+    const cap = (s: string) => (s.length > 400 ? s.slice(0, 397) + '...' : s);
+
+    for (let i = 0; i < sourceList.length; i++) {
+      const c = sourceList[i];
+      const key = keyOf(c);
+      const firstIndex = fullList.findIndex(x => x.pageId === c.pageId && x.url === c.url);
+      const safeIndex = firstIndex >= 0 ? firstIndex : i; // fallback
+
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          citation: { ...c },
+          firstIndex: safeIndex,
+          snippetSet: c.snippet ? [c.snippet] : []
+        });
+      } else {
+        const entry = byKey.get(key)!;
+        // Merge title/sectionAnchor conservatively (prefer existing)
+        if (!entry.citation.title && c.title) entry.citation.title = c.title;
+        if (!entry.citation.sectionAnchor && c.sectionAnchor) entry.citation.sectionAnchor = c.sectionAnchor;
+        // Merge snippets with simple dedupe and separator
+        if (c.snippet && !entry.snippetSet.includes(c.snippet)) {
+          entry.snippetSet.push(c.snippet);
+        }
+        // Keep earliest index for numbering
+        entry.firstIndex = Math.min(entry.firstIndex, safeIndex);
+      }
+    }
+
+    // Finalize snippet merge
+    const uniques: UniqueCitation[] = [];
+    for (const entry of byKey.values()) {
+      const mergedSnippet = entry.snippetSet.join('\n...\n');
+      entry.citation.snippet = mergedSnippet ? cap(mergedSnippet) : entry.citation.snippet;
+      uniques.push({ citation: entry.citation, firstIndex: entry.firstIndex });
+    }
+
+    // Sort by first appearance to keep numbering stable
+    uniques.sort((a, b) => a.firstIndex - b.firstIndex);
+    return uniques;
+  };
 
   // Utility to map children -> wrap citation refs -> dedupe adjacent digits
   const processChildrenWithCitations = (children: any): any => {
@@ -368,15 +419,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
   const queryType = detectQueryType(query);
   const sections = parseResponse(displayedAnswer, queryType);
   const renderBaseList = (displayCitations && displayCitations.length > 0) ? displayCitations : citations;
-  const referencedCitations = (() => {
-    // Prefer server-provided used indices for a single source of truth
-    if (Array.isArray(usedCitationIndexes) && usedCitationIndexes.length > 0) {
-      const uniq = Array.from(new Set(usedCitationIndexes.filter(n => Number.isFinite(n) && n >= 1 && n <= renderBaseList.length))).sort((a, b) => a - b);
-      return uniq.map(n => renderBaseList[n - 1]).filter(Boolean);
-    }
-    // Fallback: parse client-side from text
-    return getReferencedCitations(displayedAnswer, citations, renderBaseList);
-  })();
+  const referencedCitations = getReferencedCitations(displayedAnswer, citations, renderBaseList);
   // Only show sources that are directly cited in the answer (no fallback to all)
 
   return (
@@ -495,21 +538,19 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
           <h3 className="citations-header"><Icon name="stack" size={16} /> <span>Sources</span></h3>
           <div className="citations-list">
             {(() => {
-              // Single, consistent method:
-              // Use server-provided displayCitations if present; otherwise fall back to raw citations without client-side dedupe.
-              const renderList = (displayCitations && displayCitations.length > 0) ? displayCitations : citations;
-              const list = referencedCitations;
-              return list.map((citation) => {
-                const displayNumber = renderList.indexOf(citation) + 1;
-                const num = displayNumber > 0 ? displayNumber : (citations.indexOf(citation) + 1);
-                return (
-                  <div
-                    key={`${citation.pageId}-${num}`}
-                    className={`citation-item${activeCitation === num ? ' active' : ''}`}
-                    ref={(el) => { citationRefs.current[num] = el; }}
-                    id={`source-${num}`}
-                  >
-                    <span className="citation-number">{num}</span>
+              const renderList = (displayCitations && displayCitations.length > 0) ? displayCitations : null;
+              if (renderList) {
+                const list = referencedCitations;
+                return list.map((citation, idx) => {
+                  const displayNumber = (displayCitations ? (renderList.indexOf(citation) + 1) : idx + 1);
+                  return (
+                    <div
+                      key={`${citation.pageId}-${displayNumber}`}
+                      className={`citation-item${activeCitation === displayNumber ? ' active' : ''}`}
+                      ref={(el) => { citationRefs.current[displayNumber] = el; }}
+                      id={`source-${displayNumber}`}
+                    >
+                      <span className="citation-number">{displayNumber}</span>
                     <a 
                       href={citation.url} 
                       target="_blank" 
@@ -522,6 +563,35 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
                         <span className="citation-section">#{citation.sectionAnchor}</span>
                       )}
                     </a>
+                    </div>
+                  );
+                });
+              }
+              // Fallback: client-side consolidation of only referenced items
+              const sourceList = referencedCitations;
+              const unique = buildUniqueCitations(sourceList, citations);
+              return unique.map(({ citation, firstIndex }) => {
+                const displayNumber = firstIndex + 1;
+                return (
+                  <div
+                    key={`${citation.pageId}-${displayNumber}`}
+                    className={`citation-item${activeCitation === displayNumber ? ' active' : ''}`}
+                    ref={(el) => { citationRefs.current[displayNumber] = el; }}
+                    id={`source-${displayNumber}`}
+                  >
+                    <span className="citation-number">{displayNumber}</span>
+                      <a 
+                        href={citation.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="citation-link"
+                        aria-label={`Open ${citation.title} in new tab`}
+                      >
+                        <span className="citation-title">{citation.title}</span>
+                        {citation.sectionAnchor && (
+                          <span className="citation-section">#{citation.sectionAnchor}</span>
+                        )}
+                      </a>
                   </div>
                 );
               });
