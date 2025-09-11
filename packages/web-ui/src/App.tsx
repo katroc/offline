@@ -922,13 +922,11 @@ function App() {
             }
 
             const { thinking, answer } = splitThinking(message.content || '');
-            let usedFallback = false;
             let visibleAnswer = (answer || '').trim();
             if (!visibleAnswer) {
               const derived = deriveAnswerFromThinking(thinking);
               if (derived && derived.trim()) {
                 visibleAnswer = derived.trim();
-                usedFallback = true;
               }
             }
             const prevQuery = index > 0 ? (current?.messages[index - 1]?.content || '') : '';
@@ -936,7 +934,7 @@ function App() {
 
             return (
               <div key={message.id} className={`message message-${message.type}`}>
-                {thinking && !usedFallback && (
+                {thinking && (
                   <div className="thinking-disclosure">
                     <button
                       type="button"
