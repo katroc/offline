@@ -4,6 +4,7 @@ import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
 import { HistoryPane, type HistoryConversation } from './components/HistoryPane';
 import { generateConversationTitle, shouldUpdateTitle } from './utils/titleSummarization';
+import { stripThinking, splitThinking } from './utils/thinking';
 
 interface Message {
   id: string;
@@ -114,6 +115,7 @@ function App() {
   const [topK, setTopK] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:topK')) || 5 : 5));
   const [temperature, setTemperature] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:temperature')) || 0.7 : 0.7));
   const [ragBypass, setRagBypass] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('settings:ragBypass') === 'true' : false));
+  const [thinkingOpen, setThinkingOpen] = useState<Record<string, boolean>>({});
   
   // RAG Settings state
   const [ragConfig, setRagConfig] = useState({
@@ -248,6 +250,10 @@ function App() {
     if (typeof window === 'undefined') return;
     localStorage.setItem('settings:ragBypass', String(ragBypass));
   }, [ragBypass]);
+
+  const toggleThinking = (id: string) => {
+    setThinkingOpen(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
 
   // Load crawler config and RAG settings when settings drawer opens
@@ -500,15 +506,18 @@ function App() {
       return picked;
     };
 
+    const safeTitle = stripThinking(current.title || '').trim() || (current.title || 'Conversation');
+
     if (format === 'markdown') {
-      content = `# ${current.title}\n\n*Exported: ${timestamp}*\n\n`;
+      content = `# ${safeTitle}\n\n*Exported: ${timestamp}*\n\n`;
       
       current.messages.forEach(msg => {
         if (msg.type === 'user') {
           content += `## User\n\n${msg.content}\n\n`;
         } else {
-          content += `## Assistant\n\n${msg.content}\n\n`;
-          const referenced = getReferencedCitations(msg);
+          const visible = stripThinking(msg.content);
+          content += `## Assistant\n\n${visible}\n\n`;
+          const referenced = getReferencedCitations({ ...msg, content: visible } as any);
           if (referenced.length > 0) {
             content += `### Sources\n\n`;
             referenced.forEach((citation, idx) => {
@@ -524,7 +533,7 @@ function App() {
     } else {
       content = JSON.stringify({
         id: current.id,
-        title: current.title,
+        title: safeTitle,
         createdAt: current.createdAt,
         updatedAt: current.updatedAt,
         exportedAt: Date.now(),
@@ -533,8 +542,8 @@ function App() {
             return {
               id: msg.id,
               type: msg.type,
-              content: msg.content,
-              citations: getReferencedCitations(msg)
+              content: stripThinking(msg.content),
+              citations: getReferencedCitations({ ...msg, content: stripThinking(msg.content) } as any)
             };
           }
           return {
@@ -706,7 +715,10 @@ function App() {
             return updatedList;
           });
           
-          generateConversationTitle(conv.messages, selectedModel)
+          const sanitizedMessages = conv.messages.map(m => (
+            m.type === 'assistant' ? { ...m, content: stripThinking(m.content) } : m
+          ));
+          generateConversationTitle(sanitizedMessages as any, selectedModel)
             .then(newTitle => {
               setConversations(currentList => {
                 const updatedList = [...currentList];
@@ -897,24 +909,52 @@ function App() {
             <div className="conversation">
               {/* No welcome box; keep area clean when empty */}
               
-          {(current?.messages || []).map((message, index) => (
-            <div key={message.id} className={`message message-${message.type}`}>
-              {message.type === 'user' ? (
-                <div className="message-content">
-                  {message.content}
+          {(current?.messages || []).map((message, index) => {
+            if (message.type === 'user') {
+              return (
+                <div key={message.id} className={`message message-${message.type}`}>
+                  <div className="message-content">{message.content}</div>
                 </div>
-              ) : (
-                <SmartResponse 
-                  answer={message.content}
+              );
+            }
+
+            const { thinking, answer } = splitThinking(message.content || '');
+            const prevQuery = index > 0 ? (current?.messages[index - 1]?.content || '') : '';
+            const animate = animatingMessageId === message.id;
+
+            return (
+              <div key={message.id} className={`message message-${message.type}`}>
+                {thinking && (
+                  <div className="thinking-disclosure">
+                    <button
+                      type="button"
+                      className="thinking-toggle"
+                      aria-expanded={!!thinkingOpen[message.id]}
+                      aria-controls={`thinking-${message.id}`}
+                      onClick={() => toggleThinking(message.id)}
+                    >
+                      <span className="chevron" aria-hidden>{thinkingOpen[message.id] ? '▾' : '▸'}</span>
+                      <span className="thinking-label">{thinkingOpen[message.id] ? 'Hide thinking' : 'Show thinking'}</span>
+                    </button>
+                    {thinkingOpen[message.id] && (
+                      <div id={`thinking-${message.id}`} className="message-content thinking-block" aria-label="Model thinking">
+                        <div className="thinking-header">Thinking</div>
+                        <pre className="thinking-text">{thinking}</pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <SmartResponse
+                  answer={answer}
                   citations={message.citations || []}
                   displayCitations={message.displayCitations}
                   citationIndexMap={message.citationIndexMap}
-                  query={index > 0 ? (current?.messages[index - 1]?.content || '') : ''}
-                  animate={animatingMessageId === message.id}
+                  query={prevQuery}
+                  animate={animate}
                 />
-              )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
           
           {isLoading && (
             <div className="message message-assistant">

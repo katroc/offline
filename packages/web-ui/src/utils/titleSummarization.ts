@@ -36,6 +36,8 @@ function normalizeTitle(title: string, maxChars = 80): string {
   return smartTrim(t, maxChars);
 }
 
+import { stripThinking } from './thinking';
+
 export async function generateConversationTitle(messages: Message[], model?: string): Promise<string> {
   if (!messages || messages.length === 0) {
     return 'New conversation';
@@ -100,7 +102,7 @@ Create a short title that summarizes this conversation.
 
     for (const c of candidates) {
       if (typeof c === 'string' && c.trim()) {
-        const title = normalizeTitle(c);
+        const title = normalizeTitle(stripThinking(c));
         if (title) return title;
       }
     }
