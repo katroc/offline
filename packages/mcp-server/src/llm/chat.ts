@@ -32,8 +32,38 @@ export async function chatCompletion(messages: ChatMessage[], opts: ChatOptions 
       throw new Error(`chat HTTP ${res.status}: ${text}`);
     }
     const data = (await res.json()) as any;
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') throw new Error('invalid chat response');
+    const choice = data?.choices?.[0] ?? {};
+    const msg = choice?.message ?? {};
+    const content: string = typeof msg?.content === 'string' ? msg.content : '';
+
+    // Some providers return reasoning in a separate field — surface it as <think>…</think>
+    const possibleReasoning: unknown[] = [
+      msg?.reasoning,
+      choice?.reasoning,
+      msg?.thinking,
+      choice?.thinking,
+      // Some adapters use nonstandard fields
+      msg?.metadata?.reasoning,
+      msg?.metadata?.thinking,
+    ];
+
+    let reasoning = '';
+    for (const r of possibleReasoning) {
+      if (typeof r === 'string' && r.trim()) { reasoning = r.trim(); break; }
+    }
+
+    // If content already includes a <think> block, return as-is
+    if (typeof content === 'string' && /<think[\s>]/i.test(content)) {
+      return content;
+    }
+
+    // Otherwise, prepend reasoning when present
+    if (reasoning) {
+      const think = `<think>\n${reasoning}\n</think>\n\n`;
+      return think + (content || '');
+    }
+
+    if (!content) throw new Error('invalid chat response');
     return content;
   } finally {
     clearTimeout(t);
@@ -76,6 +106,9 @@ export async function* chatCompletionStream(messages: ChatMessage[], opts: ChatO
       throw new Error('No readable stream');
     }
 
+    let thinkOpen = false;
+    let sawContent = false;
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -90,9 +123,26 @@ export async function* chatCompletionStream(messages: ChatMessage[], opts: ChatO
           
           try {
             const parsed = JSON.parse(data);
-            const content = parsed?.choices?.[0]?.delta?.content;
-            if (typeof content === 'string' && content.length > 0) {
-              yield content;
+            const delta = parsed?.choices?.[0]?.delta ?? {};
+            const r = typeof delta?.reasoning === 'string' ? delta.reasoning : '';
+            const c = typeof delta?.content === 'string' ? delta.content : '';
+
+            if (r && !thinkOpen && !sawContent) {
+              // Open think block if reasoning starts before any content
+              thinkOpen = true;
+              yield '<think>';
+            }
+            if (r) {
+              yield r;
+            }
+            if (c) {
+              if (thinkOpen) {
+                // Close think block on first content piece
+                thinkOpen = false;
+                yield '</think>\n\n';
+              }
+              sawContent = true;
+              yield c;
             }
           } catch (e) {
             // Skip malformed JSON
@@ -105,4 +155,3 @@ export async function* chatCompletionStream(messages: ChatMessage[], opts: ChatO
     clearTimeout(t);
   }
 }
-
