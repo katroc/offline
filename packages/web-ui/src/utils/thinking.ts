@@ -33,6 +33,28 @@ export function splitThinking(input: string): { thinking: string; answer: string
     }
   }
 
+  // Handle orphan opening tag with no explicit close (raw or escaped)
+  if (parts.length === 0) {
+    const openRaw = /<think(?:\s[^>]*)?>/i;
+    const openEsc = /&lt;think(?:\s[^&]*)&gt;/i;
+    const openRawMatch = input.match(openRaw);
+    const openEscMatch = input.match(openEsc);
+    if (openRawMatch) {
+      const start = input.search(openRaw);
+      if (start >= 0) {
+        const after = input.slice(start + openRawMatch[0].length);
+        if (after.trim()) parts.push(after.trim());
+      }
+    } else if (openEscMatch) {
+      const start = input.search(openEsc);
+      if (start >= 0) {
+        const after = input.slice(start + openEscMatch[0].length);
+        const unescaped = after.replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+        if (unescaped) parts.push(unescaped);
+      }
+    }
+  }
+
   const answer = stripThinking(input);
   const thinking = parts.join('\n\n');
   return { thinking, answer };
