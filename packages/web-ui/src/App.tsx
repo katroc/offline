@@ -4,7 +4,7 @@ import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
 import { HistoryPane, type HistoryConversation } from './components/HistoryPane';
 import { generateConversationTitle, shouldUpdateTitle } from './utils/titleSummarization';
-import { stripThinking, splitThinking } from './utils/thinking';
+import { stripThinking, splitThinking, deriveAnswerFromThinking } from './utils/thinking';
 
 interface Message {
   id: string;
@@ -515,7 +515,8 @@ function App() {
         if (msg.type === 'user') {
           content += `## User\n\n${msg.content}\n\n`;
         } else {
-          const visible = stripThinking(msg.content);
+          const split = splitThinking(msg.content || '');
+          const visible = (stripThinking(msg.content) || '').trim() || deriveAnswerFromThinking(split.thinking);
           content += `## Assistant\n\n${visible}\n\n`;
           const referenced = getReferencedCitations({ ...msg, content: visible } as any);
           if (referenced.length > 0) {
@@ -539,11 +540,13 @@ function App() {
         exportedAt: Date.now(),
         messages: current.messages.map(msg => {
           if (msg.type === 'assistant') {
+            const split = splitThinking(msg.content || '');
+            const visible = (stripThinking(msg.content) || '').trim() || deriveAnswerFromThinking(split.thinking);
             return {
               id: msg.id,
               type: msg.type,
-              content: stripThinking(msg.content),
-              citations: getReferencedCitations({ ...msg, content: stripThinking(msg.content) } as any)
+              content: visible,
+              citations: getReferencedCitations({ ...msg, content: visible } as any)
             };
           }
           return {
@@ -919,12 +922,21 @@ function App() {
             }
 
             const { thinking, answer } = splitThinking(message.content || '');
+            let usedFallback = false;
+            let visibleAnswer = (answer || '').trim();
+            if (!visibleAnswer) {
+              const derived = deriveAnswerFromThinking(thinking);
+              if (derived && derived.trim()) {
+                visibleAnswer = derived.trim();
+                usedFallback = true;
+              }
+            }
             const prevQuery = index > 0 ? (current?.messages[index - 1]?.content || '') : '';
             const animate = animatingMessageId === message.id;
 
             return (
               <div key={message.id} className={`message message-${message.type}`}>
-                {thinking && (
+                {thinking && !usedFallback && (
                   <div className="thinking-disclosure">
                     <button
                       type="button"
@@ -945,7 +957,7 @@ function App() {
                   </div>
                 )}
                 <SmartResponse
-                  answer={answer}
+                  answer={visibleAnswer}
                   citations={message.citations || []}
                   displayCitations={message.displayCitations}
                   citationIndexMap={message.citationIndexMap}

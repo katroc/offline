@@ -72,3 +72,38 @@ export function hasThinking(input: string): boolean {
   const s = input || '';
   return /<think>[\s\S]*?<\/think>/.test(s) || /&lt;think&gt;[\s\S]*?&lt;\/think&gt;/.test(s);
 }
+
+// Attempt to derive a presentable answer from thinking content when the
+// final answer is missing or entirely wrapped in <think> without a close.
+export function deriveAnswerFromThinking(thinking: string): string {
+  const t = (thinking || '').trim();
+  if (!t) return '';
+
+  // Heuristic 1: Use the first markdown heading (## or #) and onward
+  const mdHeading = /^(#{1,3})\s+.+/m;
+  const m1 = t.match(mdHeading);
+  if (m1 && typeof m1.index === 'number') {
+    return t.slice(m1.index).trim();
+  }
+
+  // Heuristic 2: Look for explicit cues
+  const cues = [
+    /^(?:final\s+answer|answer)\s*:/im,
+    /^(?:response)\s*:/im,
+    /(let\s+me\s+draft\s+the\s+response\s*:?)/i,
+  ];
+  for (const re of cues) {
+    const m = t.match(re);
+    if (m && typeof (m as any).index === 'number') {
+      const idx = (m as any).index as number;
+      // Start after the matched cue
+      return t.slice(idx + m[0].length).trim();
+    }
+  }
+
+  // Heuristic 3: If it looks like structured bullets, keep as-is
+  if (/^[-*]\s+.+/m.test(t)) return t;
+
+  // Fallback: return whole thinking content
+  return t;
+}
