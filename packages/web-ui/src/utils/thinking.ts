@@ -4,9 +4,16 @@
 export function stripThinking(input: string): string {
   if (!input) return '';
   try {
-    const rawPattern = /<think(?:\s[^>]*)?>[\s\S]*?<\/think>\s*/gi;
-    const escPattern = /&lt;think(?:\s[^&]*)&gt;[\s\S]*?&lt;\/think&gt;\s*/gi;
-    return input.replace(rawPattern, '').replace(escPattern, '').trim();
+    const rawClosed = /<think(?:\s[^>]*)?>[\s\S]*?<\/think>\s*/gi;
+    const escClosed = /&lt;think(?:\s[^&]*)&gt;[\s\S]*?&lt;\/think&gt;\s*/gi;
+    let out = input.replace(rawClosed, '').replace(escClosed, '');
+
+    // Also handle orphan opening tags (no closing tag) — strip to end of text
+    const rawOrphan = /<think(?:\s[^>]*)?>[\s\S]*$/i;
+    const escOrphan = /&lt;think(?:\s[^&]*)&gt;[\s\S]*$/i;
+    out = out.replace(rawOrphan, '').replace(escOrphan, '');
+
+    return out.trim();
   } catch {
     return input;
   }
