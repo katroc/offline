@@ -104,6 +104,6 @@ export function deriveAnswerFromThinking(thinking: string): string {
   // Heuristic 3: If it looks like structured bullets, keep as-is
   if (/^[-*]\s+.+/m.test(t)) return t;
 
-  // Fallback: return whole thinking content
-  return t;
+  // No good extraction signal — don't leak thinking into the answer area
+  return '';
 }
