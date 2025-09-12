@@ -28,7 +28,6 @@ export interface ChromaConfig {
   collectionName?: string;
 }
 
-// TODO: Implement LanceDB when dependencies are added
 export class MockVectorStore implements VectorStore {
   private chunks: Map<string, Chunk> = new Map();
 
