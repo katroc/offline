@@ -1,7 +1,7 @@
 import type { Chunk } from '@app/shared';
-import type { Embedder } from './interfaces.js';
 import type { EnhancedEmbedding, EnhancedEmbedder, HybridSimilarityCalculator } from '../llm/enhanced-embedder.js';
 import { embed as baseEmbed } from '../llm/embeddings.js';
+import type { Embedder } from './interfaces.js';
 
 export interface RetrievalConfig {
   // Two-stage retrieval
@@ -125,13 +125,13 @@ export class EnhancedRetriever {
   }
 
   private distanceToSimilarity(distance?: number): number {
-    if (typeof distance !== 'number' || !isFinite(distance) || distance < 0) return 0;
+    if (typeof distance !== 'number' || !isFinite(distance) || distance < 0) {return 0;}
     // Map distance to [0,1] similarity monotonically
     return 1 / (1 + distance);
   }
 
   private async generateHydeDocument(query: string): Promise<string> {
-    if (!this.llmClient) return query;
+    if (!this.llmClient) {return query;}
     
     const prompt = this.config.hydePrompt || `
       Write a detailed, technical document that would contain the answer to this question: "${query}"
@@ -198,7 +198,7 @@ export class EnhancedRetriever {
     expandedQueries: string[],
     options?: any
   ): Promise<Array<{chunk: Chunk; score: number}>> {
-    let allCandidates: Array<{chunk: Chunk; score: number}> = [];
+    const allCandidates: Array<{chunk: Chunk; score: number}> = [];
 
     // Primary query retrieval
     const primaryResults = await this.vectorStore.search(
@@ -486,10 +486,10 @@ export class QueryExpander {
           const variant = query.replace(new RegExp(word, 'gi'), synonym);
           if (!variants.includes(variant)) {
             variants.push(variant);
-            if (variants.length >= maxVariants) break;
+            if (variants.length >= maxVariants) {break;}
           }
         }
-        if (variants.length >= maxVariants) break;
+        if (variants.length >= maxVariants) {break;}
       }
     }
     

@@ -1,16 +1,16 @@
+import { fileURLToPath } from 'url';
+import path from 'node:path';
 import type { RagResponse, Filters, Citation } from '@app/shared';
 import type { ValidRagQuery } from './validation.js';
 import { chatCompletion, chatCompletionStream, type ChatMessage } from './llm/chat.js';
-import { ConfluenceClient } from './sources/confluence.js';
+import { createConfluenceClient } from './utils/confluence-factory.js';
 import { LocalDocStore } from './store/local-doc-store.js';
 import { MockVectorStore, LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
-import { SimpleChunker } from './retrieval/chunker.js';
+import { SimpleChunker } from './retrieval/chunking.js';
 import { DefaultRAGPipeline, type RetrievalResult } from './retrieval/pipeline.js';
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
 import { OptimizedRAGIntegration } from './retrieval/optimized-rag-integration.js';
-import { GoogleEmbedder } from './llm/google-embedder.js';
-import { fileURLToPath } from 'url';
-import path from 'node:path';
+import { GoogleEmbedder } from './llm/embeddings.js';
 import { QueryIntentProcessor, QueryIntent } from './retrieval/query-intent-processor.js';
 
 // Singleton instances (in production, these would be properly managed)
@@ -22,11 +22,7 @@ let localDocStore: LocalDocStore | null = null;
 async function getSmartPipeline(): Promise<SmartRAGPipeline> {
   if (!smartPipeline) {
     // Initialize document source client
-    const confluenceClient = new ConfluenceClient({
-      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-      username: process.env.CONFLUENCE_USERNAME || '',
-      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-    });
+    const confluenceClient = createConfluenceClient();
 
     smartPipeline = new SmartRAGPipeline(confluenceClient);
     console.log('Initialized Smart RAG Pipeline with LLM document analysis');
@@ -40,11 +36,7 @@ async function getOptimizedPipeline(): Promise<OptimizedRAGIntegration> {
     const fallbackPipeline = await getRagPipeline();
     
     // Initialize document source client
-    const confluenceClient = new ConfluenceClient({
-      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-      username: process.env.CONFLUENCE_USERNAME || '',
-      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-    });
+    const confluenceClient = createConfluenceClient();
 
     // Use same vector store setup as default pipeline
     const __filename = fileURLToPath(import.meta.url);
@@ -84,7 +76,7 @@ async function getOptimizedPipeline(): Promise<OptimizedRAGIntegration> {
     });
 
     // Get local doc store
-    if (!localDocStore) localDocStore = new LocalDocStore();
+    if (!localDocStore) {localDocStore = new LocalDocStore();}
 
     // Create optimized integration with same embedder as fallback
     optimizedPipeline = new OptimizedRAGIntegration(
@@ -104,11 +96,7 @@ async function getOptimizedPipeline(): Promise<OptimizedRAGIntegration> {
 async function getRagPipeline(): Promise<DefaultRAGPipeline> {
   if (!ragPipeline) {
     // Initialize document source client
-    const confluenceClient = new ConfluenceClient({
-      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-      username: process.env.CONFLUENCE_USERNAME || '',
-      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-    });
+    const confluenceClient = createConfluenceClient();
 
     // Initialize vector store - support LanceDB, Chroma, or mock
     const __filename = fileURLToPath(import.meta.url);
@@ -166,7 +154,7 @@ async function getRagPipeline(): Promise<DefaultRAGPipeline> {
     });
 
     // Initialize local doc store
-    if (!localDocStore) localDocStore = new LocalDocStore();
+    if (!localDocStore) {localDocStore = new LocalDocStore();}
 
     // Initialize embedder with Google's new model
     const embedder = new GoogleEmbedder();
@@ -608,9 +596,9 @@ function dedupeCitations(citations: Citation[]): { displayCitations: Citation[];
     } else {
       const entry = byKey.get(key)!;
       // Merge non-critical fields conservatively
-      if (!entry.citation.title && c.title) entry.citation.title = c.title;
-      if (!entry.citation.sectionAnchor && c.sectionAnchor) entry.citation.sectionAnchor = c.sectionAnchor;
-      if (c.snippet && !entry.snippets.includes(c.snippet)) entry.snippets.push(c.snippet);
+      if (!entry.citation.title && c.title) {entry.citation.title = c.title;}
+      if (!entry.citation.sectionAnchor && c.sectionAnchor) {entry.citation.sectionAnchor = c.sectionAnchor;}
+      if (c.snippet && !entry.snippets.includes(c.snippet)) {entry.snippets.push(c.snippet);}
       entry.firstIndex = Math.min(entry.firstIndex, i);
     }
   }
@@ -620,7 +608,7 @@ function dedupeCitations(citations: Citation[]): { displayCitations: Citation[];
 
   for (const entry of byKey.values()) {
     const mergedSnippet = entry.snippets.join('\n...\n');
-    if (mergedSnippet) entry.citation.snippet = cap(mergedSnippet);
+    if (mergedSnippet) {entry.citation.snippet = cap(mergedSnippet);}
     merged.push({ citation: entry.citation, firstIndex: entry.firstIndex });
   }
 

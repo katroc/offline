@@ -4,7 +4,7 @@ export class LocalDocStore {
   private docs: Map<string, DocumentSource> = new Map();
 
   upsertAll(documents: DocumentSource[]): void {
-    for (const d of documents) this.docs.set(d.id, d);
+    for (const d of documents) {this.docs.set(d.id, d);}
   }
 
   size(): number { return this.docs.size; }
@@ -12,16 +12,16 @@ export class LocalDocStore {
   // Simple candidate selection without CQL: naive term scoring over title + content
   queryCandidates(query: string, filters: Omit<SearchParams, 'query'>, limit = 30): DocumentSource[] {
     const terms = this.tokenize(query);
-    if (terms.length === 0) return [];
+    if (terms.length === 0) {return [];}
 
     const candidates: Array<{ doc: DocumentSource; score: number }> = [];
     for (const doc of this.docs.values()) {
-      if (filters.space && doc.spaceKey !== filters.space) continue;
+      if (filters.space && doc.spaceKey !== filters.space) {continue;}
       if (filters.labels && filters.labels.length > 0) {
         const hasAny = filters.labels.some(l => doc.labels.includes(l));
-        if (!hasAny) continue;
+        if (!hasAny) {continue;}
       }
-      if (filters.updatedAfter && new Date(doc.updatedAt) < new Date(filters.updatedAfter)) continue;
+      if (filters.updatedAfter && new Date(doc.updatedAt) < new Date(filters.updatedAfter)) {continue;}
 
       const hay = `${doc.title}\n${this.stripHtml(doc.content)}`.toLowerCase();
       let score = 0;
@@ -30,7 +30,7 @@ export class LocalDocStore {
         const matches = hay.split(t).length - 1;
         score += matches * (t.length >= 5 ? 2 : 1);
       }
-      if (score > 0) candidates.push({ doc, score });
+      if (score > 0) {candidates.push({ doc, score });}
     }
 
     return candidates

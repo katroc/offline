@@ -1,15 +1,15 @@
 import './env.js';
+import { fileURLToPath } from 'url';
+import path from 'node:path';
 import Fastify from 'fastify';
 import { generateRequestId, logRequestStart, logRequestEnd, logError } from './logger.js';
 import { validateRagQuery } from './validation.js';
 import { ragQuery, ragQueryStream } from './orchestrator.js';
 import { chatCompletion, type ChatMessage } from './llm/chat.js';
-import { ConfluenceClient } from './sources/confluence.js';
-import { SimpleChunker } from './retrieval/chunker.js';
+import { createConfluenceClient } from './utils/confluence-factory.js';
+import { SimpleChunker } from './retrieval/chunking.js';
 import { LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
-import { GoogleEmbedder } from './llm/google-embedder.js';
-import { fileURLToPath } from 'url';
-import path from 'node:path';
+import { GoogleEmbedder } from './llm/embeddings.js';
 import { CrawlerConfigStore } from './ingest/config-store.js';
 import { RateLimiter } from './ingest/utils.js';
 
@@ -225,9 +225,9 @@ app.post('/rag/stream', async (req, reply) => {
 function isAuthorized(req: any): boolean {
   const key = process.env.ADMIN_API_KEY || '';
   // If no key configured, treat as public (optional API key)
-  if (!key) return true;
+  if (!key) {return true;}
   const hdr = req.headers['x-api-key'] || req.headers['authorization'];
-  if (!hdr) return false;
+  if (!hdr) {return false;}
   if (typeof hdr === 'string' && hdr.startsWith('Bearer ')) {
     return hdr.slice(7).trim() === key;
   }
@@ -235,7 +235,7 @@ function isAuthorized(req: any): boolean {
 }
 
 app.post('/admin/sync', async (req, reply) => {
-  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  if (!isAuthorized(req)) {return reply.code(401).send({ error: 'unauthorized' });}
 
   const body = (req.body as any) || {};
   let spaces: string[] = [];
@@ -253,11 +253,7 @@ app.post('/admin/sync', async (req, reply) => {
   const __dirname = path.dirname(__filename);
   const repoRoot = path.resolve(__dirname, '../../../');
 
-  const confluence = new ConfluenceClient({
-    baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-    username: process.env.CONFLUENCE_USERNAME || '',
-    apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-  });
+  const confluence = createConfluenceClient();
   const minIntervalMs = Math.max(0, parseInt(String(process.env.CONFLUENCE_MIN_INTERVAL_MS || 0), 10) || 0);
   const rl = new RateLimiter(minIntervalMs);
   if (spaces.length === 0) {
@@ -308,16 +304,16 @@ app.post('/admin/sync', async (req, reply) => {
         while (processed < maxPages) {
           await rl.waitTurn();
           const resp = await confluence.listPagesBySpace(space, start, pageSize);
-          if (!resp.documents || resp.documents.length === 0) break;
+          if (!resp.documents || resp.documents.length === 0) {break;}
           for (const d of resp.documents) {
-            if (processed >= maxPages) break;
+            if (processed >= maxPages) {break;}
             processed++;
             try {
               await rl.waitTurn();
               const doc = await confluence.getDocumentById(d.id);
               const page = { id: doc.id, title: doc.title, spaceKey: doc.spaceKey, version: doc.version, labels: doc.labels, updatedAt: doc.updatedAt, url: doc.url };
               const chunks = await chunker.chunkDocument(page, doc.content);
-              if (chunks.length === 0) continue;
+              if (chunks.length === 0) {continue;}
               const texts = chunks.map(c => c.text);
               const batchSize = Math.max(1, parseInt(String(process.env.EMBED_BATCH_SIZE || 16), 10) || 16);
               const delayMs = Math.max(0, parseInt(String(process.env.EMBED_DELAY_MS || 0), 10) || 0);
@@ -326,16 +322,16 @@ app.post('/admin/sync', async (req, reply) => {
                 const slice = texts.slice(i, i + batchSize);
                 const res = await embedder.embed(slice);
                 vectors.push(...res);
-                if (delayMs > 0 && i + batchSize < texts.length) await new Promise(r => setTimeout(r, delayMs));
+                if (delayMs > 0 && i + batchSize < texts.length) {await new Promise(r => setTimeout(r, delayMs));}
               }
-              for (let i = 0; i < chunks.length; i++) chunks[i].vector = vectors[i];
+              for (let i = 0; i < chunks.length; i++) {chunks[i].vector = vectors[i];}
               await vector.upsertChunks(chunks);
             } catch (e) {
               console.warn('admin sync: failed page', d.id, e);
             }
           }
           start = resp.start + resp.limit;
-          if (resp.documents.length < pageSize) break;
+          if (resp.documents.length < pageSize) {break;}
         }
       }
       console.log('admin sync: completed');
@@ -349,13 +345,9 @@ app.post('/admin/sync', async (req, reply) => {
 
 // Get available Confluence spaces (for UI selection)
 app.get('/admin/confluence/spaces', async (req, reply) => {
-  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  if (!isAuthorized(req)) {return reply.code(401).send({ error: 'unauthorized' });}
   try {
-    const client = new ConfluenceClient({
-      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-      username: process.env.CONFLUENCE_USERNAME || '',
-      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-    });
+    const client = createConfluenceClient();
     const keys = await client.listAllSpaceKeys();
     return reply.send({ spaces: keys });
   } catch (e) {
@@ -365,7 +357,7 @@ app.get('/admin/confluence/spaces', async (req, reply) => {
 
 // Get crawler config (JSON-backed)
 app.get('/admin/crawler/config', async (req, reply) => {
-  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  if (!isAuthorized(req)) {return reply.code(401).send({ error: 'unauthorized' });}
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const repoRoot = path.resolve(__dirname, '../../../');
@@ -380,7 +372,7 @@ app.get('/admin/crawler/config', async (req, reply) => {
 
 // Update crawler config (JSON-backed)
 app.put('/admin/crawler/config', async (req, reply) => {
-  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  if (!isAuthorized(req)) {return reply.code(401).send({ error: 'unauthorized' });}
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const repoRoot = path.resolve(__dirname, '../../../');
@@ -405,7 +397,7 @@ app.put('/admin/crawler/config', async (req, reply) => {
 
 // RAG Settings - Get current RAG pipeline environment variables
 app.get('/admin/rag/config', async (req, reply) => {
-  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  if (!isAuthorized(req)) {return reply.code(401).send({ error: 'unauthorized' });}
   try {
     const config = {
       // Pipeline Selection
@@ -446,7 +438,7 @@ app.get('/admin/rag/config', async (req, reply) => {
 
 // RAG Settings - Update RAG pipeline environment variables
 app.put('/admin/rag/config', async (req, reply) => {
-  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  if (!isAuthorized(req)) {return reply.code(401).send({ error: 'unauthorized' });}
   try {
     const body = (req.body as any) || {};
     
@@ -546,7 +538,7 @@ app.put('/admin/rag/config', async (req, reply) => {
 
 // Vector store stats (diagnostics): row count and recent indexed_at
 app.get('/admin/vector/stats', async (req, reply) => {
-  if (!isAuthorized(req)) return reply.code(401).send({ error: 'unauthorized' });
+  if (!isAuthorized(req)) {return reply.code(401).send({ error: 'unauthorized' });}
   try {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
@@ -594,10 +586,10 @@ app.get('/admin/vector/stats', async (req, reply) => {
 app.all('/*', async (req) => ({ name: 'mcp-server', message: 'scaffold running', path: req.url, method: req.method }));
 
 app.listen({ port, host }).then(() => {
-  // eslint-disable-next-line no-console
+   
   console.log(`MCP server (Fastify) listening on ${host}:${port}`);
 }).catch((err) => {
-  // eslint-disable-next-line no-console
+   
   console.error('Server failed to start', err);
   process.exit(1);
 });

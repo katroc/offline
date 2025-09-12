@@ -63,7 +63,7 @@ export async function chatCompletion(messages: ChatMessage[], opts: ChatOptions 
       return think + (content || '');
     }
 
-    if (!content) throw new Error('invalid chat response');
+    if (!content) {throw new Error('invalid chat response');}
     return content;
   } finally {
     clearTimeout(t);
@@ -111,7 +111,7 @@ export async function* chatCompletionStream(messages: ChatMessage[], opts: ChatO
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {break;}
 
       const chunk = decoder.decode(value);
       const lines = chunk.split('\n');
@@ -119,7 +119,7 @@ export async function* chatCompletionStream(messages: ChatMessage[], opts: ChatO
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6).trim();
-          if (data === '[DONE]') return;
+          if (data === '[DONE]') {return;}
           
           try {
             const parsed = JSON.parse(data);

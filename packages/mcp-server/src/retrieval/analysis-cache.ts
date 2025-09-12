@@ -1,4 +1,4 @@
-import type { AnalysisResult } from './llm-document-analyzer.js';
+import type { AnalysisResult } from './llm-analysis.js';
 
 export interface CacheKey {
   documentId: string;
@@ -30,7 +30,7 @@ export class AnalysisCache {
     const cacheId = this.buildCacheId(key);
     const entry = this.cache.get(cacheId);
     
-    if (!entry) return null;
+    if (!entry) {return null;}
     
     // Check if entry is expired
     if (Date.now() - entry.timestamp > this.ttlMs) {
@@ -72,7 +72,7 @@ export class AnalysisCache {
     const cacheId = this.buildCacheId(key);
     const entry = this.cache.get(cacheId);
     
-    if (!entry) return false;
+    if (!entry) {return false;}
     
     // Check expiration
     return Date.now() - entry.timestamp <= this.ttlMs;

@@ -60,7 +60,7 @@ export interface Filters {
 
 // Strip all <think>...</think> blocks from a string
 export function stripThinking(input: string): string {
-  if (!input) return '';
+  if (!input) {return '';}
   try {
     const rawClosed = /<think(?:\s[^>]*)?>[\s\S]*?<\/think>\s*/gi;
     const escClosed = /&lt;think(?:\s[^&]*)&gt;[\s\S]*?&lt;\/think&gt;\s*/gi;

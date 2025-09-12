@@ -175,9 +175,9 @@ export class QueryIntentProcessor {
         const a = (m?.[1] || m?.[3] || '').trim();
         const b = (m?.[2] || m?.[4] || '').trim();
         const pairs: string[] = [];
-        if (a) pairs.push(`${a} comparison`);
-        if (b) pairs.push(`${b} comparison`);
-        if (a && b) pairs.push(`compare ${a} and ${b}`, `${a} vs ${b}`);
+        if (a) {pairs.push(`${a} comparison`);}
+        if (b) {pairs.push(`${b} comparison`);}
+        if (a && b) {pairs.push(`compare ${a} and ${b}`, `${a} vs ${b}`);}
         return [original, ...pairs];
       }
     }

@@ -1,10 +1,12 @@
 import '../env.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { ConfluenceClient } from '../sources/confluence.js';
-import { SimpleChunker } from '../retrieval/chunker.js';
-import { LanceDBVectorStore } from '../retrieval/vector-store.js';
-import { GoogleEmbedder } from '../llm/google-embedder.js';
+import { createConfluenceClient } from '../utils/confluence-factory.js';
+import type { ConfluenceClient } from '../sources/confluence.js';
+import { SimpleChunker } from '../retrieval/chunking.js';
+import { createVectorStore } from '../utils/vector-store-factory.js';
+import type { VectorStore } from '../retrieval/vector-store.js';
+import { GoogleEmbedder } from '../llm/embeddings.js';
 import { JsonStateStore } from './state.js';
 import { CrawlerConfigStore } from './config-store.js';
 import { normalizeHtml, sha256, Semaphore, RateLimiter } from './utils.js';
@@ -27,11 +29,7 @@ async function main() {
   const repoRoot = await getRepoRoot();
 
   // Services
-  const confluence = new ConfluenceClient({
-    baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-    username: process.env.CONFLUENCE_USERNAME || '',
-    apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-  });
+  const confluence = createConfluenceClient();
 
   // Load JSON config (UI-managed) with env fallbacks
   const cfgStore = new CrawlerConfigStore(repoRoot);
@@ -49,7 +47,7 @@ async function main() {
       allSpaces = false;
     }
   }
-  if (spaces === null) spaces = uiCfg.spaces;
+  if (spaces === null) {spaces = uiCfg.spaces;}
 
   if (allSpaces) {
     try {
@@ -72,9 +70,7 @@ async function main() {
   const state = new JsonStateStore(repoRoot);
   await state.load();
 
-  const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
-  const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
-  const vector = new LanceDBVectorStore({ dbPath: lanceDbPath, tableName: 'confluence_chunks' });
+  const vector = await createVectorStore({ useRealVectorDB: true, type: 'lancedb', tableName: 'confluence_chunks' });
   await vector.initialize();
 
   const chunker = new SimpleChunker({ targetChunkSize: 800, overlap: 200, maxChunkSize: 1200 });
@@ -94,10 +90,10 @@ async function main() {
     while (processed < cfg.maxPagesPerTick) {
       await rl.waitTurn();
       const resp = await confluence.listPagesBySpace(space, start, limit);
-      if (!resp.documents || resp.documents.length === 0) break;
+      if (!resp.documents || resp.documents.length === 0) {break;}
 
       for (const doc of resp.documents) {
-        if (processed >= cfg.maxPagesPerTick) break;
+        if (processed >= cfg.maxPagesPerTick) {break;}
         processed++;
 
         const release = await sem.acquire();
@@ -110,7 +106,7 @@ async function main() {
       }
 
       start = resp.start + resp.limit;
-      if (resp.documents.length < limit) break; // no more pages
+      if (resp.documents.length < limit) {break;} // no more pages
     }
 
     await Promise.allSettled(tasks);
@@ -127,7 +123,7 @@ async function indexOne(
   confluence: ConfluenceClient,
   chunker: SimpleChunker,
   embedder: GoogleEmbedder,
-  vector: LanceDBVectorStore
+  vector: VectorStore
   ,
   rl: RateLimiter
 ): Promise<void> {
@@ -153,7 +149,7 @@ async function indexOne(
   };
 
   const chunks = await chunker.chunkDocument(page, doc.content);
-  if (chunks.length === 0) return;
+  if (chunks.length === 0) {return;}
 
   // Embed
   // Embed with batching and pacing
@@ -165,9 +161,9 @@ async function indexOne(
     const slice = allTexts.slice(i, i + batchSize);
     const res = await embedder.embed(slice);
     vectors.push(...res);
-    if (delayMs > 0 && i + batchSize < allTexts.length) await new Promise(r => setTimeout(r, delayMs));
+    if (delayMs > 0 && i + batchSize < allTexts.length) {await new Promise(r => setTimeout(r, delayMs));}
   }
-  for (let i = 0; i < chunks.length; i++) chunks[i].vector = vectors[i];
+  for (let i = 0; i < chunks.length; i++) {chunks[i].vector = vectors[i];}
 
   // Upsert to LanceDB
   await vector.upsertChunks(chunks);

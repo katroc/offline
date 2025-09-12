@@ -1,5 +1,5 @@
-import type { DocumentSource, DocumentSourceClient, SearchParams, SearchResponse } from './interfaces.js';
 import * as https from 'https';
+import type { DocumentSource, DocumentSourceClient, SearchParams, SearchResponse } from './interfaces.js';
 
 export interface ConfluenceConfig {
   baseUrl: string;
@@ -112,8 +112,8 @@ export class ConfluenceClient implements DocumentSourceClient {
       console.log('Confluence API Request (space list):', url);
       const response = await this.fetch(url);
       const data: ConfluenceSpacesResponse = await response.json();
-      for (const s of data.results || []) keys.push(s.key);
-      if (!data.results || data.results.length < limit) break;
+      for (const s of data.results || []) {keys.push(s.key);}
+      if (!data.results || data.results.length < limit) {break;}
       start = data.start + data.limit;
     }
 
@@ -376,8 +376,8 @@ export class ConfluenceClient implements DocumentSourceClient {
 
   private joinUrl(base: string, path: string): string {
     // Ensures we don't end up with double slashes
-    if (base.endsWith('/') && path.startsWith('/')) return base.slice(0, -1) + path;
-    if (!base.endsWith('/') && !path.startsWith('/')) return `${base}/${path}`;
+    if (base.endsWith('/') && path.startsWith('/')) {return base.slice(0, -1) + path;}
+    if (!base.endsWith('/') && !path.startsWith('/')) {return `${base}/${path}`;}
     return base + path;
   }
 

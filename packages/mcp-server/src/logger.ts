@@ -24,7 +24,7 @@ export function generateRequestId(): string {
 }
 
 function write(log: BaseLog) {
-  // eslint-disable-next-line no-console
+   
   console.log(JSON.stringify(log));
 }
 

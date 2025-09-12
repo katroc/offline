@@ -2,7 +2,7 @@
 
 // Strip all <think>...</think> blocks from a string
 export function stripThinking(input: string): string {
-  if (!input) return '';
+  if (!input) {return '';}
   try {
     const rawClosed = /<think(?:\s[^>]*)?>[\s\S]*?<\/think>\s*/gi;
     const escClosed = /&lt;think(?:\s[^&]*)&gt;[\s\S]*?&lt;\/think&gt;\s*/gi;
@@ -21,14 +21,14 @@ export function stripThinking(input: string): string {
 
 // Extract thinking blocks and the visible answer separately
 export function splitThinking(input: string): { thinking: string; answer: string } {
-  if (!input) return { thinking: '', answer: '' };
+  if (!input) {return { thinking: '', answer: '' };}
   const parts: string[] = [];
 
   // Raw blocks (allow attributes/whitespace)
   const raw = /<think(?:\s[^>]*)?>([\s\S]*?)<\/think>/gi;
   let m: RegExpExecArray | null;
   while ((m = raw.exec(input)) !== null) {
-    if (m[1]) parts.push(m[1].trim());
+    if (m[1]) {parts.push(m[1].trim());}
   }
 
   // Escaped blocks (allow attributes/whitespace)
@@ -50,14 +50,14 @@ export function splitThinking(input: string): { thinking: string; answer: string
       const start = input.search(openRaw);
       if (start >= 0) {
         const after = input.slice(start + openRawMatch[0].length);
-        if (after.trim()) parts.push(after.trim());
+        if (after.trim()) {parts.push(after.trim());}
       }
     } else if (openEscMatch) {
       const start = input.search(openEsc);
       if (start >= 0) {
         const after = input.slice(start + openEscMatch[0].length);
         const unescaped = after.replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
-        if (unescaped) parts.push(unescaped);
+        if (unescaped) {parts.push(unescaped);}
       }
     }
   }
@@ -77,7 +77,7 @@ export function hasThinking(input: string): boolean {
 // final answer is missing or entirely wrapped in <think> without a close.
 export function deriveAnswerFromThinking(thinking: string): string {
   const t = (thinking || '').trim();
-  if (!t) return '';
+  if (!t) {return '';}
 
   // Heuristic 1: Use the first markdown heading (## or #) and onward
   const mdHeading = /^(#{1,3})\s+.+/m;
@@ -102,7 +102,7 @@ export function deriveAnswerFromThinking(thinking: string): string {
   }
 
   // Heuristic 3: If it looks like structured bullets, keep as-is
-  if (/^[-*]\s+.+/m.test(t)) return t;
+  if (/^[-*]\s+.+/m.test(t)) {return t;}
 
   // Heuristic 4: If thinking is substantial but was cut off (no clear answer patterns),
   // provide a helpful message instead of showing raw thinking

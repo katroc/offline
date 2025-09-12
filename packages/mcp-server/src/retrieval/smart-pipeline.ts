@@ -1,10 +1,10 @@
-import type { RAGPipeline, RetrievalResult } from './pipeline.js';
 import type { Filters } from '@app/shared';
-import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces.js';
-import { LLMDocumentAnalyzer, type ConversationContext } from './llm-document-analyzer.js';
-import { simpleTextRelevanceScore } from './llm-search.js';
-import { SimpleChunker } from './chunker.js';
 import type { Citation } from '@app/shared';
+import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces.js';
+import type { RAGPipeline, RetrievalResult } from './pipeline.js';
+import { LLMDocumentAnalyzer, type ConversationContext } from './llm-analysis.js';
+import { simpleTextRelevanceScore } from './llm-analysis.js';
+import { SimpleChunker } from './chunking.js';
 
 /**
  * Smart RAG pipeline that uses LLM to analyze full documents for relevance
@@ -44,7 +44,7 @@ export class SmartRAGPipeline implements RAGPipeline {
       const q = limited[i];
       console.log(`Smart RAG: Attempt ${i + 1}/${limited.length} with query: "${q}" (conv=${convKey})`);
       const res = await this.retrieveSingleQuery(q, filters, topK, model, convKey);
-      if (res.chunks.length > 0) return res;
+      if (res.chunks.length > 0) {return res;}
       lastResult = res;
     }
     return lastResult;
@@ -62,12 +62,12 @@ export class SmartRAGPipeline implements RAGPipeline {
     // Add to per-conversation memory
     const mem = this.conversationMemory.get(convKey) || [];
     mem.push(query);
-    if (mem.length > 10) mem.splice(0, mem.length - 10);
+    if (mem.length > 10) {mem.splice(0, mem.length - 10);}
     this.conversationMemory.set(convKey, mem);
 
     try {
       // Extract conversation context
-      const context = await this.analyzer.extractConversationContext(mem, model);
+      const context = await this.analyzer.extractConversationContext(mem.join('\n'), model);
       console.log('Conversation context:', context);
 
       // Phase 1: Cast a wide net - get many potentially relevant documents
@@ -82,6 +82,7 @@ export class SmartRAGPipeline implements RAGPipeline {
       const analyses = await this.analyzer.analyzeDocuments(
         query, 
         broadDocuments, 
+        10, // topK
         context, 
         model
       );
@@ -274,7 +275,7 @@ export class SmartRAGPipeline implements RAGPipeline {
     
     // CVE pattern
     const cveMatch = query.match(/CVE-\d{4}-\d+/gi);
-    if (cveMatch) entities.push(...cveMatch);
+    if (cveMatch) {entities.push(...cveMatch);}
     
     // Product names (simple heuristic)
     const words = query.split(/\s+/);
@@ -355,7 +356,7 @@ export class SmartRAGPipeline implements RAGPipeline {
       const lower = text.toLowerCase();
       let phraseHits = 0;
       for (const p of phrases) {
-        if (p.length >= 5 && lower.includes(p)) phraseHits += 1;
+        if (p.length >= 5 && lower.includes(p)) {phraseHits += 1;}
       }
       const phraseBonus = Math.min(0.3, phraseHits * 0.06);
 
@@ -365,7 +366,7 @@ export class SmartRAGPipeline implements RAGPipeline {
       const penaltyTerms = ['overview','licens','migration','support','pricing','billing','desk','contact','policy'];
       let penalty = 0;
       for (const term of penaltyTerms) {
-        if (tLower.includes(term) && !qLower.includes(term)) penalty += 0.08;
+        if (tLower.includes(term) && !qLower.includes(term)) {penalty += 0.08;}
       }
       penalty = Math.min(0.4, penalty);
 
@@ -407,11 +408,11 @@ export class SmartRAGPipeline implements RAGPipeline {
         // Score chunks and select top 1-2
         const scored = docChunks.map(ch => ({ ch, score: scoreChunk(query, doc.title, ch.text) }))
           .sort((a, b) => b.score - a.score);
-        if (scored.length > 0) chunks.push(scored[0].ch);
-        if (scored.length > 1 && chunks.length < topK) chunks.push(scored[1].ch);
+        if (scored.length > 0) {chunks.push(scored[0].ch);}
+        if (scored.length > 1 && chunks.length < topK) {chunks.push(scored[1].ch);}
       }
       
-      if (chunks.length >= topK) break;
+      if (chunks.length >= topK) {break;}
     }
     
     return chunks;
@@ -470,8 +471,8 @@ export class SmartRAGPipeline implements RAGPipeline {
         const docChunks = await this.chunker.chunkDocument(page, doc.content);
         const scored = docChunks.map(ch => ({ ch, score: simpleTextRelevanceScore(query, ch.text, ch.title) }))
           .sort((a, b) => b.score - a.score);
-        if (scored.length > 0) chunks.push(scored[0].ch);
-        if (chunks.length >= topK) break;
+        if (scored.length > 0) {chunks.push(scored[0].ch);}
+        if (chunks.length >= topK) {break;}
       }
       
       return { chunks, citations: this.chunksToCitations(chunks) };

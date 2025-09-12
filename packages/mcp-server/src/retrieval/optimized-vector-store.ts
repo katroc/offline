@@ -1,6 +1,6 @@
 import type { Chunk } from '@app/shared';
-import type { EnhancedEmbedding } from '../llm/enhanced-embedder.js';
 import { ChromaClient, type Collection } from 'chromadb';
+import type { EnhancedEmbedding } from '../llm/enhanced-embedder.js';
 
 export interface VectorStoreConfig {
   // Multiple vector spaces
@@ -363,8 +363,8 @@ export class OptimizedVectorStore {
       nResults: k,
       where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
       include: ['documents', 'metadatas', 'distances'].filter(item => {
-        if (item === 'metadatas') return includeMetadata;
-        if (item === 'distances') return includeDistances;
+        if (item === 'metadatas') {return includeMetadata;}
+        if (item === 'distances') {return includeDistances;}
         return true;
       }) as any
     });
@@ -531,7 +531,7 @@ export class OptimizedVectorStore {
     });
 
     const distances: number[] = (testResults.distances?.[0] as number[]) || [];
-    if (distances.length === 0) return requestedK;
+    if (distances.length === 0) {return requestedK;}
 
     // Count results above threshold
     const goodResults = distances.filter((d: number) => d <= this.config.adaptiveThreshold).length;
@@ -551,7 +551,7 @@ export class OptimizedVectorStore {
     const where: any = {};
 
     for (const [key, value] of Object.entries(filters)) {
-      if (value === undefined || value === null) continue;
+      if (value === undefined || value === null) {continue;}
 
       if (Array.isArray(value)) {
         where[key] = { $in: value };

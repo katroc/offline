@@ -28,7 +28,6 @@ export interface ChromaConfig {
   collectionName?: string;
 }
 
-// TODO: Implement LanceDB when dependencies are added
 export class MockVectorStore implements VectorStore {
   private chunks: Map<string, Chunk> = new Map();
 
@@ -68,7 +67,7 @@ export class MockVectorStore implements VectorStore {
     if (!Number.isNaN(ttlDays) && ttlDays > 0) {
       const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
       filtered = filtered.filter(chunk => {
-        if (!chunk.indexedAt) return true; // allow unknown age
+        if (!chunk.indexedAt) {return true;} // allow unknown age
         const t = Date.parse(chunk.indexedAt);
         return isNaN(t) ? true : t >= cutoffMs;
       });
@@ -165,7 +164,7 @@ export class LanceDBVectorStore implements VectorStore {
   }
 
   private async ensureTable(): Promise<void> {
-    if (this.table) return;
+    if (this.table) {return;}
     try {
       this.table = await this.db.openTable(this.tableName);
     } catch {
@@ -174,7 +173,7 @@ export class LanceDBVectorStore implements VectorStore {
   }
 
   async upsertChunks(chunks: Chunk[]): Promise<void> {
-    if (chunks.length === 0) return;
+    if (chunks.length === 0) {return;}
 
     try {
       // Convert chunks to LanceDB format
@@ -196,8 +195,8 @@ export class LanceDBVectorStore implements VectorStore {
 
       const sanitize = (items: any[]) => items.map(r => {
         const copy: any = { ...r };
-        if (this.omitUrlField) delete copy.url;
-        if (this.omitIndexedAtField) delete copy.indexed_at;
+        if (this.omitUrlField) {delete copy.url;}
+        if (this.omitIndexedAtField) {delete copy.indexed_at;}
         return copy;
       });
       let records = sanitize(recordsRaw);
@@ -229,7 +228,7 @@ export class LanceDBVectorStore implements VectorStore {
         } catch (err: any) {
           const msg = String(err?.message || err);
           const strict = String(process.env.LANCEDB_STRICT_SCHEMA || '').toLowerCase() === 'true';
-          if (!/Found field not in schema/i.test(msg) || strict) throw err;
+          if (!/Found field not in schema/i.test(msg) || strict) {throw err;}
 
           // Graceful downgrade: remember and drop unknown fields for subsequent writes
           const fieldRegex = /Found field not in schema:\s*(\w+)/i;
@@ -239,8 +238,8 @@ export class LanceDBVectorStore implements VectorStore {
             console.warn('LanceDB schema mismatch detected; enabling compatibility mode. Missing field:', missing || 'unknown');
             this.warnedSchemaOnce = true;
           }
-          if (missing.toLowerCase() === 'url') this.omitUrlField = true;
-          if (missing.toLowerCase() === 'indexed_at') this.omitIndexedAtField = true;
+          if (missing.toLowerCase() === 'url') {this.omitUrlField = true;}
+          if (missing.toLowerCase() === 'indexed_at') {this.omitIndexedAtField = true;}
           records = sanitize(recordsRaw);
           await this.table.add(records);
         }
@@ -264,15 +263,15 @@ export class LanceDBVectorStore implements VectorStore {
     try {
       let query = this.table.search(vector).limit(topK);
       // Prefer cosine similarity if available
-      try { if (typeof query.metricType === 'function') query = query.metricType('cosine'); } catch {}
+      try { if (typeof query.metricType === 'function') {query = query.metricType('cosine');} } catch {}
 
       // Optional ANN tuning parameters (no-op if unsupported by current LanceDB)
       const nprobes = Number(process.env.LANCEDB_NPROBES || 0);
       const efSearch = Number(process.env.LANCEDB_EF_SEARCH || 0);
       const refine = Number(process.env.LANCEDB_REFINE_FACTOR || 0);
-      try { if (nprobes > 0 && typeof (query as any).nprobes === 'function') query = (query as any).nprobes(nprobes); } catch {}
-      try { if (efSearch > 0 && typeof (query as any).efSearch === 'function') query = (query as any).efSearch(efSearch); } catch {}
-      try { if (refine > 0 && typeof (query as any).refineFactor === 'function') query = (query as any).refineFactor(refine); } catch {}
+      try { if (nprobes > 0 && typeof (query as any).nprobes === 'function') {query = (query as any).nprobes(nprobes);} } catch {}
+      try { if (efSearch > 0 && typeof (query as any).efSearch === 'function') {query = (query as any).efSearch(efSearch);} } catch {}
+      try { if (refine > 0 && typeof (query as any).refineFactor === 'function') {query = (query as any).refineFactor(refine);} } catch {}
 
       // Apply filters
       const whereConditions: string[] = [];
@@ -318,7 +317,7 @@ export class LanceDBVectorStore implements VectorStore {
 
       // TTL post-filtering to avoid schema issues on legacy tables
       const ttlDays = parseInt(process.env.CHUNK_TTL_DAYS || '7', 10);
-      if (Number.isNaN(ttlDays) || ttlDays <= 0) return mapped;
+      if (Number.isNaN(ttlDays) || ttlDays <= 0) {return mapped;}
       const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
       return mapped.filter(r => {
         const t = r.chunk.indexedAt ? Date.parse(r.chunk.indexedAt) : NaN;
@@ -348,7 +347,7 @@ export class LanceDBVectorStore implements VectorStore {
   // Best-effort stats for diagnostics (dev convenience).
   async getStats(limit = 5): Promise<{ count: number | null; recent: Array<{ id: string; page_id: string; title?: string; indexed_at?: string }> }> {
     await this.ensureTable();
-    if (!this.table) return { count: 0, recent: [] };
+    if (!this.table) {return { count: 0, recent: [] };}
     let count: number | null = null;
     try {
       if (typeof this.table.countRows === 'function') {
@@ -367,7 +366,7 @@ export class LanceDBVectorStore implements VectorStore {
         return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
       });
       recent = arr.slice(0, limit).map(r => ({ id: r.id, page_id: r.page_id, title: r.title, indexed_at: r.indexed_at }));
-      if (count === null) count = arr.length;
+      if (count === null) {count = arr.length;}
     } catch {
       // ignore
     }
@@ -380,10 +379,10 @@ export class LanceDBVectorStore implements VectorStore {
   private async ensureVectorIndex(): Promise<void> {
     try {
       const tbl: any = this.table;
-      if (!tbl || typeof tbl.listIndexes !== 'function' || typeof tbl.createIndex !== 'function') return;
+      if (!tbl || typeof tbl.listIndexes !== 'function' || typeof tbl.createIndex !== 'function') {return;}
       const idxs = await tbl.listIndexes();
       const hasVector = Array.isArray(idxs) && idxs.some((i: any) => String(i?.name || '').toLowerCase().includes('vector'));
-      if (hasVector) return;
+      if (hasVector) {return;}
 
       const metric = (process.env.LANCEDB_METRIC || 'cosine').toLowerCase();
       const preferHnsw = String(process.env.LANCEDB_USE_HNSW || 'true').toLowerCase() !== 'false';
@@ -498,7 +497,7 @@ export class ChromaVectorStore implements VectorStore {
   }
 
   async upsertChunks(chunks: Chunk[]): Promise<void> {
-    if (chunks.length === 0) return;
+    if (chunks.length === 0) {return;}
 
     try {
       if (!this.collection) {
@@ -651,7 +650,7 @@ export class ChromaVectorStore implements VectorStore {
 
       // TTL post-filtering
       const ttlDays = parseInt(process.env.CHUNK_TTL_DAYS || '7', 10);
-      if (Number.isNaN(ttlDays) || ttlDays <= 0) return results;
+      if (Number.isNaN(ttlDays) || ttlDays <= 0) {return results;}
       
       const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
       return results.filter(r => {

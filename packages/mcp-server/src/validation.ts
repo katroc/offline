@@ -11,7 +11,7 @@ export interface ValidRagQuery {
 export function validateRagQuery(input: unknown): { ok: true; value: ValidRagQuery } | { ok: false; error: string } {
   const obj = (input ?? {}) as Record<string, unknown>;
   const question = typeof obj.question === 'string' ? obj.question.trim() : '';
-  if (!question) return { ok: false, error: 'invalid request: missing question' };
+  if (!question) {return { ok: false, error: 'invalid request: missing question' };}
 
   const space = typeof obj.space === 'string' ? obj.space : undefined;
   let labels: string[] | undefined;
