@@ -1,4 +1,4 @@
-import type { AnalysisResult } from './llm-document-analyzer.js';
+import type { AnalysisResult } from './llm-analysis.js';
 
 export interface CacheKey {
   documentId: string;

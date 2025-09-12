@@ -3,9 +3,9 @@ import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces
 import { LocalDocStore } from '../store/local-doc-store.js';
 import { GoogleEmbedder } from '../llm/embeddings.js';
 import type { VectorStore, VectorSearchResult } from './vector-store.js';
-import type { Chunker } from './chunker.js';
+import type { Chunker } from './chunking.js';
 import type { Embedder } from './interfaces.js';
-import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
+import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-analysis.js';
 
 export interface RAGPipeline {
   retrieveForQuery(

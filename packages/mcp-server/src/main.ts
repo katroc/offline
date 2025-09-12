@@ -7,7 +7,7 @@ import { validateRagQuery } from './validation.js';
 import { ragQuery, ragQueryStream } from './orchestrator.js';
 import { chatCompletion, type ChatMessage } from './llm/chat.js';
 import { createConfluenceClient } from './utils/confluence-factory.js';
-import { SimpleChunker } from './retrieval/chunker.js';
+import { SimpleChunker } from './retrieval/chunking.js';
 import { LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
 import { GoogleEmbedder } from './llm/embeddings.js';
 import { CrawlerConfigStore } from './ingest/config-store.js';

@@ -1,8 +1,8 @@
 import type { Chunk, ConfluencePage } from '@app/shared';
 import { EnhancedEmbedder, HybridSimilarityCalculator, type EnhancedEmbeddingConfig } from '../llm/enhanced-embedder.js';
-import type { ChunkingConfig } from './chunker.js';
-import { SemanticChunker, type SemanticChunkingConfig } from './semantic-chunker.js';
-import { SimpleChunker } from './chunker.js';
+import type { ChunkingConfig } from './chunking.js';
+import { SemanticChunker, type SemanticChunkingConfig } from './chunking.js';
+import { SimpleChunker } from './chunking.js';
 import { EnhancedRetriever, type RetrievalConfig } from './enhanced-retriever.js';
 import { OptimizedVectorStore, type VectorStoreConfig } from './optimized-vector-store.js';
 import type { Embedder } from './interfaces.js';

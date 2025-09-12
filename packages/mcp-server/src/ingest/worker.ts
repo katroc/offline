@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createConfluenceClient } from '../utils/confluence-factory.js';
 import type { ConfluenceClient } from '../sources/confluence.js';
-import { SimpleChunker } from '../retrieval/chunker.js';
+import { SimpleChunker } from '../retrieval/chunking.js';
 import { createVectorStore } from '../utils/vector-store-factory.js';
 import type { VectorStore } from '../retrieval/vector-store.js';
 import { GoogleEmbedder } from '../llm/embeddings.js';

@@ -6,7 +6,7 @@ import { chatCompletion, chatCompletionStream, type ChatMessage } from './llm/ch
 import { createConfluenceClient } from './utils/confluence-factory.js';
 import { LocalDocStore } from './store/local-doc-store.js';
 import { MockVectorStore, LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
-import { SimpleChunker } from './retrieval/chunker.js';
+import { SimpleChunker } from './retrieval/chunking.js';
 import { DefaultRAGPipeline, type RetrievalResult } from './retrieval/pipeline.js';
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
 import { OptimizedRAGIntegration } from './retrieval/optimized-rag-integration.js';
