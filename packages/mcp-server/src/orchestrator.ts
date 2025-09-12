@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { RagResponse, Filters, Citation } from '@app/shared';
 import type { ValidRagQuery } from './validation.js';
 import { chatCompletion, chatCompletionStream, type ChatMessage } from './llm/chat.js';
-import { ConfluenceClient } from './sources/confluence.js';
+import { createConfluenceClient } from './utils/confluence-factory.js';
 import { LocalDocStore } from './store/local-doc-store.js';
 import { MockVectorStore, LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
 import { SimpleChunker } from './retrieval/chunker.js';
@@ -22,11 +22,7 @@ let localDocStore: LocalDocStore | null = null;
 async function getSmartPipeline(): Promise<SmartRAGPipeline> {
   if (!smartPipeline) {
     // Initialize document source client
-    const confluenceClient = new ConfluenceClient({
-      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-      username: process.env.CONFLUENCE_USERNAME || '',
-      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-    });
+    const confluenceClient = createConfluenceClient();
 
     smartPipeline = new SmartRAGPipeline(confluenceClient);
     console.log('Initialized Smart RAG Pipeline with LLM document analysis');
@@ -40,11 +36,7 @@ async function getOptimizedPipeline(): Promise<OptimizedRAGIntegration> {
     const fallbackPipeline = await getRagPipeline();
     
     // Initialize document source client
-    const confluenceClient = new ConfluenceClient({
-      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-      username: process.env.CONFLUENCE_USERNAME || '',
-      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-    });
+    const confluenceClient = createConfluenceClient();
 
     // Use same vector store setup as default pipeline
     const __filename = fileURLToPath(import.meta.url);
@@ -104,11 +96,7 @@ async function getOptimizedPipeline(): Promise<OptimizedRAGIntegration> {
 async function getRagPipeline(): Promise<DefaultRAGPipeline> {
   if (!ragPipeline) {
     // Initialize document source client
-    const confluenceClient = new ConfluenceClient({
-      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-      username: process.env.CONFLUENCE_USERNAME || '',
-      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-    });
+    const confluenceClient = createConfluenceClient();
 
     // Initialize vector store - support LanceDB, Chroma, or mock
     const __filename = fileURLToPath(import.meta.url);

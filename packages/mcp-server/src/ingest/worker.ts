@@ -1,9 +1,11 @@
 import '../env.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { ConfluenceClient } from '../sources/confluence.js';
+import { createConfluenceClient } from '../utils/confluence-factory.js';
+import type { ConfluenceClient } from '../sources/confluence.js';
 import { SimpleChunker } from '../retrieval/chunker.js';
-import { LanceDBVectorStore } from '../retrieval/vector-store.js';
+import { createVectorStore } from '../utils/vector-store-factory.js';
+import type { VectorStore } from '../retrieval/vector-store.js';
 import { GoogleEmbedder } from '../llm/google-embedder.js';
 import { JsonStateStore } from './state.js';
 import { CrawlerConfigStore } from './config-store.js';
@@ -27,11 +29,7 @@ async function main() {
   const repoRoot = await getRepoRoot();
 
   // Services
-  const confluence = new ConfluenceClient({
-    baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-    username: process.env.CONFLUENCE_USERNAME || '',
-    apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-  });
+  const confluence = createConfluenceClient();
 
   // Load JSON config (UI-managed) with env fallbacks
   const cfgStore = new CrawlerConfigStore(repoRoot);
@@ -72,9 +70,7 @@ async function main() {
   const state = new JsonStateStore(repoRoot);
   await state.load();
 
-  const lanceEnv = process.env.LANCEDB_PATH || './data/lancedb';
-  const lanceDbPath = path.isAbsolute(lanceEnv) ? lanceEnv : path.resolve(repoRoot, lanceEnv);
-  const vector = new LanceDBVectorStore({ dbPath: lanceDbPath, tableName: 'confluence_chunks' });
+  const vector = await createVectorStore({ useRealVectorDB: true, type: 'lancedb', tableName: 'confluence_chunks' });
   await vector.initialize();
 
   const chunker = new SimpleChunker({ targetChunkSize: 800, overlap: 200, maxChunkSize: 1200 });
@@ -127,7 +123,7 @@ async function indexOne(
   confluence: ConfluenceClient,
   chunker: SimpleChunker,
   embedder: GoogleEmbedder,
-  vector: LanceDBVectorStore
+  vector: VectorStore
   ,
   rl: RateLimiter
 ): Promise<void> {

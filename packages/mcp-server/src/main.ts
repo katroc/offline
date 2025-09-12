@@ -6,7 +6,7 @@ import { generateRequestId, logRequestStart, logRequestEnd, logError } from './l
 import { validateRagQuery } from './validation.js';
 import { ragQuery, ragQueryStream } from './orchestrator.js';
 import { chatCompletion, type ChatMessage } from './llm/chat.js';
-import { ConfluenceClient } from './sources/confluence.js';
+import { createConfluenceClient } from './utils/confluence-factory.js';
 import { SimpleChunker } from './retrieval/chunker.js';
 import { LanceDBVectorStore, ChromaVectorStore } from './retrieval/vector-store.js';
 import { GoogleEmbedder } from './llm/google-embedder.js';
@@ -253,11 +253,7 @@ app.post('/admin/sync', async (req, reply) => {
   const __dirname = path.dirname(__filename);
   const repoRoot = path.resolve(__dirname, '../../../');
 
-  const confluence = new ConfluenceClient({
-    baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-    username: process.env.CONFLUENCE_USERNAME || '',
-    apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-  });
+  const confluence = createConfluenceClient();
   const minIntervalMs = Math.max(0, parseInt(String(process.env.CONFLUENCE_MIN_INTERVAL_MS || 0), 10) || 0);
   const rl = new RateLimiter(minIntervalMs);
   if (spaces.length === 0) {
@@ -351,11 +347,7 @@ app.post('/admin/sync', async (req, reply) => {
 app.get('/admin/confluence/spaces', async (req, reply) => {
   if (!isAuthorized(req)) {return reply.code(401).send({ error: 'unauthorized' });}
   try {
-    const client = new ConfluenceClient({
-      baseUrl: process.env.CONFLUENCE_BASE_URL || 'https://confluence.local',
-      username: process.env.CONFLUENCE_USERNAME || '',
-      apiToken: process.env.CONFLUENCE_API_TOKEN || ''
-    });
+    const client = createConfluenceClient();
     const keys = await client.listAllSpaceKeys();
     return reply.send({ spaces: keys });
   } catch (e) {
