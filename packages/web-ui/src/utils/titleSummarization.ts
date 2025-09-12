@@ -10,7 +10,7 @@ interface Message {
 // Smart trim a string without cutting words; adds ellipsis when trimmed
 function smartTrim(input: string, maxChars: number): string {
   const clean = input.replace(/\s+/g, ' ').trim();
-  if (clean.length <= maxChars) return clean;
+  if (clean.length <= maxChars) {return clean;}
   const slice = clean.slice(0, maxChars + 1);
   const lastSpace = slice.lastIndexOf(' ');
   const trimmed = lastSpace > 0 ? slice.slice(0, lastSpace) : clean.slice(0, maxChars);
@@ -26,7 +26,7 @@ function normalizeTitle(title: string, maxChars = 80): string {
     .replace(/[\r\n]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (!t) return '';
+  if (!t) {return '';}
   // Keep it succinct by words first
   const words = t.split(' ');
   if (words.length > 12) {
@@ -103,7 +103,7 @@ Create a short title that summarizes this conversation.
     for (const c of candidates) {
       if (typeof c === 'string' && c.trim()) {
         const title = normalizeTitle(stripThinking(c));
-        if (title) return title;
+        if (title) {return title;}
       }
     }
 

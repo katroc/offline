@@ -36,7 +36,7 @@ export class Semaphore {
   private release() {
     this.current--;
     const next = this.queue.shift();
-    if (next) next();
+    if (next) {next();}
   }
 }
 
@@ -46,7 +46,7 @@ export class RateLimiter {
   async waitTurn(): Promise<void> {
     const now = Date.now();
     const wait = Math.max(0, this.nextAllowed - now);
-    if (wait > 0) await new Promise(res => setTimeout(res, wait));
+    if (wait > 0) {await new Promise(res => setTimeout(res, wait));}
     this.nextAllowed = Date.now() + Math.max(0, this.minIntervalMs);
   }
 }

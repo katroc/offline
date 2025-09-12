@@ -1,11 +1,11 @@
 import type { Chunk, Filters, Citation, ConfluencePage } from '@app/shared';
 import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces.js';
 import { LocalDocStore } from '../store/local-doc-store.js';
+import { getPreset } from '../config/optimization-presets.js';
+import { embed as baseEmbed } from '../llm/embeddings.js';
 import type { VectorStore } from './vector-store.js';
 import type { RAGPipeline, RetrievalResult } from './pipeline.js';
 import { OptimizedRAGPipeline } from './optimized-pipeline.js';
-import { getPreset } from '../config/optimization-presets.js';
-import { embed as baseEmbed } from '../llm/embeddings.js';
 
 /**
  * Integration layer that adds optimized RAG capabilities to the existing system

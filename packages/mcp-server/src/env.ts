@@ -1,8 +1,8 @@
-import { config as dotenvConfig } from 'dotenv';
 import { setDefaultResultOrder } from 'node:dns';
 import { fileURLToPath } from 'url';
 import path from 'node:path';
 import fs from 'node:fs';
+import { config as dotenvConfig } from 'dotenv';
 
 // Prefer IPv4 to avoid some IPv6 resolution/connectivity issues
 try { setDefaultResultOrder('ipv4first'); } catch {}

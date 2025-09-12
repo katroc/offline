@@ -1,5 +1,5 @@
-import type { Chunk, ConfluencePage } from '@app/shared';
 import { randomUUID } from 'crypto';
+import type { Chunk, ConfluencePage } from '@app/shared';
 
 export interface ChunkingConfig {
   targetChunkSize: number; // tokens
@@ -109,7 +109,7 @@ export class SimpleChunker implements Chunker {
 
     for (let i = 0; i < words.length; i += wordsPerChunk - overlapWords) {
       const chunkWords = words.slice(i, i + wordsPerChunk);
-      if (chunkWords.length === 0) break;
+      if (chunkWords.length === 0) {break;}
 
       const chunkText = chunkWords.join(' ');
       chunks.push({
@@ -126,7 +126,7 @@ export class SimpleChunker implements Chunker {
       });
 
       // Prevent infinite loop
-      if (i + wordsPerChunk >= words.length) break;
+      if (i + wordsPerChunk >= words.length) {break;}
     }
 
     return chunks;

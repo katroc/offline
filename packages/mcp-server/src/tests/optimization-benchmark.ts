@@ -226,7 +226,7 @@ export class OptimizationBenchmark {
     await pipeline.initialize();
     
     // Process documents and measure performance
-    let totalProcessingMetrics: ProcessingMetrics = {
+    const totalProcessingMetrics: ProcessingMetrics = {
       chunkingTime: 0,
       embeddingTime: 0,
       indexingTime: 0,

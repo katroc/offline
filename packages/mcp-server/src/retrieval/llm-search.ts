@@ -17,7 +17,7 @@ export async function rankDocumentsByRelevance(
   topK: number = 5,
   model?: string
 ): Promise<RelevanceResult[]> {
-  if (documents.length === 0) return [];
+  if (documents.length === 0) {return [];}
 
   // For large document sets, pre-filter to top candidates
   const candidates = documents.slice(0, 20); // Process max 20 at a time
@@ -65,7 +65,7 @@ ${docSummaries}`
     const results: RelevanceResult[] = rankings
       .map((ranking: any) => {
         const doc = candidates.find(d => d.id === ranking.id);
-        if (!doc) return null;
+        if (!doc) {return null;}
         
         return {
           document: doc,
@@ -105,7 +105,7 @@ export function simpleTextRelevanceScore(query: string, text: string, title?: st
   let score = 0;
   
   // Title matches are worth more
-  if (titleLower && titleLower.includes(queryLower)) score += 0.5;
+  if (titleLower && titleLower.includes(queryLower)) {score += 0.5;}
   
   // Count keyword occurrences in content
   const queryWords = queryLower.split(/\s+/);
@@ -128,7 +128,7 @@ function calculateKeywordScore(query: string, doc: DocumentSource): number {
   let score = 0;
   
   // Title matches are worth more
-  if (titleLower.includes(queryLower)) score += 0.5;
+  if (titleLower.includes(queryLower)) {score += 0.5;}
   
   // Count keyword occurrences in content
   const queryWords = queryLower.split(/\s+/);

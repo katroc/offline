@@ -1,5 +1,5 @@
-import type { Chunk, ConfluencePage } from '@app/shared';
 import { randomUUID } from 'crypto';
+import type { Chunk, ConfluencePage } from '@app/shared';
 import type { ChunkingConfig } from './chunker.js';
 
 export interface SemanticChunkingConfig extends ChunkingConfig {
@@ -174,7 +174,7 @@ export class SemanticChunker {
     // Create overlapping windows
     for (let i = 0; i < words.length; i += targetWords - overlapWords) {
       const chunkWords = words.slice(i, i + targetWords);
-      if (chunkWords.length < this.config.minChunkWords) break;
+      if (chunkWords.length < this.config.minChunkWords) {break;}
       
       // Find semantic boundaries (sentence endings)
       const chunkText = this.findSemanticBoundary(chunkWords.join(' '));
@@ -206,7 +206,7 @@ export class SemanticChunker {
       });
 
       // Break if we've covered all words
-      if (i + targetWords >= words.length) break;
+      if (i + targetWords >= words.length) {break;}
     }
     
     return chunks;
@@ -253,9 +253,9 @@ export class SemanticChunker {
     }
     
     // Add document type hints
-    if (metadata.hasCode) enhancements.push('Contains code examples');
-    if (metadata.hasTables) enhancements.push('Contains tables');
-    if (metadata.hasLists) enhancements.push('Contains lists');
+    if (metadata.hasCode) {enhancements.push('Contains code examples');}
+    if (metadata.hasTables) {enhancements.push('Contains tables');}
+    if (metadata.hasLists) {enhancements.push('Contains lists');}
     
     const contextPrefix = enhancements.length > 0 ? `[${enhancements.join(', ')}] ` : '';
     return contextPrefix + text;

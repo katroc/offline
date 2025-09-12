@@ -243,10 +243,10 @@ export class EnhancedEmbedder implements Embedder {
   private formatMetadata(metadata: any): string {
     const parts: string[] = [];
     
-    if (metadata.hasCode) parts.push('Contains code examples');
-    if (metadata.hasTables) parts.push('Contains data tables');
-    if (metadata.hasLists) parts.push('Contains structured lists');
-    if (metadata.hasImages) parts.push('Contains images or diagrams');
+    if (metadata.hasCode) {parts.push('Contains code examples');}
+    if (metadata.hasTables) {parts.push('Contains data tables');}
+    if (metadata.hasLists) {parts.push('Contains structured lists');}
+    if (metadata.hasImages) {parts.push('Contains images or diagrams');}
     
     return parts.length > 0 ? `Document features: ${parts.join(', ')}` : '';
   }
@@ -308,7 +308,7 @@ export class HybridSimilarityCalculator {
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
+    if (a.length !== b.length) {return 0;}
 
     let dotProduct = 0;
     let normA = 0;
@@ -320,7 +320,7 @@ export class HybridSimilarityCalculator {
       normB += b[i] * b[i];
     }
 
-    if (normA === 0 || normB === 0) return 0;
+    if (normA === 0 || normB === 0) {return 0;}
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 

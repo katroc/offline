@@ -132,13 +132,13 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
       const idx0 = n - 1;
       if (citationIndexMap && idx0 >= 0 && idx0 < citationIndexMap.length) {
         const mapped = citationIndexMap[idx0];
-        if (typeof mapped === 'number' && mapped >= 0 && mapped < renderList.length) return mapped + 1;
+        if (typeof mapped === 'number' && mapped >= 0 && mapped < renderList.length) {return mapped + 1;}
       }
       return n; // fallback
     };
 
     const displaySet = new Set<number>();
-    for (const n of referencedNumbers) displaySet.add(toDisplay(n));
+    for (const n of referencedNumbers) {displaySet.add(toDisplay(n));}
 
     return Array.from(displaySet)
       .sort((a, b) => a - b)
@@ -150,7 +150,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
   const wrapCitationRefs = (node: any): any => {
     if (typeof node === 'string') {
       // Normalize duplicates like [1][1] or [1] 1 -> [1]
-      let normalized = node
+      const normalized = node
         .replace(/\[(\d+)\]\s*\[\1\]/g, '[$1]')
         .replace(/\[(\d+)\](\s*\1)(?!\d)/g, '[$1]');
 
@@ -294,8 +294,8 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
       } else {
         const entry = byKey.get(key)!;
         // Merge title/sectionAnchor conservatively (prefer existing)
-        if (!entry.citation.title && c.title) entry.citation.title = c.title;
-        if (!entry.citation.sectionAnchor && c.sectionAnchor) entry.citation.sectionAnchor = c.sectionAnchor;
+        if (!entry.citation.title && c.title) {entry.citation.title = c.title;}
+        if (!entry.citation.sectionAnchor && c.sectionAnchor) {entry.citation.sectionAnchor = c.sectionAnchor;}
         // Merge snippets with simple dedupe and separator
         if (c.snippet && !entry.snippetSet.includes(c.snippet)) {
           entry.snippetSet.push(c.snippet);
@@ -323,7 +323,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({ answer, citations,
     const arr = React.Children.toArray(children).map((n: any) => wrapCitationRefs(n));
     const flat: any[] = [];
     for (const n of arr) {
-      if (Array.isArray(n)) flat.push(...n); else flat.push(n);
+      if (Array.isArray(n)) {flat.push(...n);} else {flat.push(n);}
     }
     return dedupeAdjacentCitationDigits(flat);
   };

@@ -53,11 +53,11 @@ function App() {
   // Load conversations (migrate from legacy single-thread messages if present)
   const [conversations, setConversations] = useState<Conversation[]>(() => {
     try {
-      if (typeof window === 'undefined') return [];
+      if (typeof window === 'undefined') {return [];}
       const raw = localStorage.getItem(STORAGE_KEYS.conversations);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed as Conversation[];
+        if (Array.isArray(parsed)) {return parsed as Conversation[];}
       }
       // Migration: check old messages key
       const legacy = localStorage.getItem(STORAGE_KEYS.legacyMessages);
@@ -79,7 +79,7 @@ function App() {
     }
   });
   const [activeId, setActiveId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === 'undefined') {return null;}
     return localStorage.getItem(STORAGE_KEYS.activeId) || (null as string | null);
   });
   const [input, setInput] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.draft) || '' : ''));
@@ -92,7 +92,7 @@ function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
-    if (saved === 'light' || saved === 'dark') return saved;
+    if (saved === 'light' || saved === 'dark') {return saved;}
     const prefersLight = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
     return prefersLight ? 'light' : 'dark';
   });
@@ -108,7 +108,7 @@ function App() {
   const deleteAllInputRef = useRef<HTMLInputElement>(null);
   const canConfirmDeleteAll = (deleteAllInput || '').trim().toUpperCase() === 'DELETE';
   const confirmDeleteAll = () => {
-    if (!canConfirmDeleteAll) return;
+    if (!canConfirmDeleteAll) {return;}
     deleteAllConversations();
     setDeleteAllOpen(false);
     setTimeout(() => inputRef.current?.focus(), 100);
@@ -208,47 +208,47 @@ function App() {
 
   // Persist conversations and active selection
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
     localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(conversations));
   }, [conversations]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (activeId) localStorage.setItem(STORAGE_KEYS.activeId, activeId);
+    if (typeof window === 'undefined') {return;}
+    if (activeId) {localStorage.setItem(STORAGE_KEYS.activeId, activeId);}
   }, [activeId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
     localStorage.setItem(STORAGE_KEYS.draft, input);
   }, [input]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
     localStorage.setItem(STORAGE_KEYS.space, space);
   }, [space]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
     localStorage.setItem(STORAGE_KEYS.labels, labels);
   }, [labels]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (selectedModel) localStorage.setItem(STORAGE_KEYS.model, selectedModel);
+    if (typeof window === 'undefined') {return;}
+    if (selectedModel) {localStorage.setItem(STORAGE_KEYS.model, selectedModel);}
   }, [selectedModel]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
     localStorage.setItem('settings:topK', String(topK));
   }, [topK]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
     localStorage.setItem('settings:temperature', String(temperature));
   }, [temperature]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
     localStorage.setItem('settings:ragBypass', String(ragBypass));
   }, [ragBypass]);
 
@@ -259,7 +259,7 @@ function App() {
 
   // Load crawler config and RAG settings when settings drawer opens
   useEffect(() => {
-    if (!settingsOpen) return;
+    if (!settingsOpen) {return;}
     
     // Load crawler config
     (async () => {
@@ -388,7 +388,7 @@ function App() {
   useEffect(() => {
     const fetchModels = async () => {
       const isHealthy = await checkHealth();
-      if (!isHealthy) return;
+      if (!isHealthy) {return;}
 
       try {
         const response = await fetch('/models');
@@ -461,7 +461,7 @@ function App() {
   };
 
   const exportConversation = (format: 'markdown' | 'json') => {
-    if (!current) return;
+    if (!current) {return;}
 
     const timestamp = new Date(current.updatedAt).toLocaleString();
     let content: string;
@@ -576,7 +576,7 @@ function App() {
 
   const current = conversations.find(c => c.id === activeId) || conversations[0];
   useEffect(() => {
-    if (!activeId && conversations.length > 0) setActiveId(conversations[0].id);
+    if (!activeId && conversations.length > 0) {setActiveId(conversations[0].id);}
   }, [activeId, conversations.length]);
 
   // Focus input when switching conversations
@@ -598,7 +598,7 @@ function App() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading) {return;}
 
     const controller = new AbortController();
     setAbortController(controller);

@@ -67,7 +67,7 @@ export class LLMDocumentAnalyzer {
     context?: ConversationContext,
     model?: string
   ): Promise<AnalysisResult[]> {
-    if (documents.length === 0) return [];
+    if (documents.length === 0) {return [];}
 
     // Analyze documents in parallel (with reasonable batch size)
     const batchSize = 3; // Analyze 3 docs at once to avoid overwhelming LLM

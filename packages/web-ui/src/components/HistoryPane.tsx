@@ -92,7 +92,7 @@ export const HistoryPane: React.FC<HistoryPaneProps> = ({ items, activeId, onSel
   
   // Filter items based on search query
   const filteredItems = React.useMemo(() => {
-    if (!searchQuery.trim()) return items;
+    if (!searchQuery.trim()) {return items;}
     const query = searchQuery.toLowerCase();
     return items.filter(item => {
       // Search in title
@@ -175,8 +175,8 @@ export const HistoryPane: React.FC<HistoryPaneProps> = ({ items, activeId, onSel
           // Sort pinned items first, then by updatedAt
           [...filteredItems]
             .sort((a, b) => {
-              if (a.pinned && !b.pinned) return -1;
-              if (!a.pinned && b.pinned) return 1;
+              if (a.pinned && !b.pinned) {return -1;}
+              if (!a.pinned && b.pinned) {return 1;}
               return b.updatedAt - a.updatedAt;
             })
             .map(it => (

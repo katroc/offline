@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'url';
+import path from 'node:path';
 import type { RagResponse, Filters, Citation } from '@app/shared';
 import type { ValidRagQuery } from './validation.js';
 import { chatCompletion, chatCompletionStream, type ChatMessage } from './llm/chat.js';
@@ -9,8 +11,6 @@ import { DefaultRAGPipeline, type RetrievalResult } from './retrieval/pipeline.j
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
 import { OptimizedRAGIntegration } from './retrieval/optimized-rag-integration.js';
 import { GoogleEmbedder } from './llm/google-embedder.js';
-import { fileURLToPath } from 'url';
-import path from 'node:path';
 import { QueryIntentProcessor, QueryIntent } from './retrieval/query-intent-processor.js';
 
 // Singleton instances (in production, these would be properly managed)
@@ -84,7 +84,7 @@ async function getOptimizedPipeline(): Promise<OptimizedRAGIntegration> {
     });
 
     // Get local doc store
-    if (!localDocStore) localDocStore = new LocalDocStore();
+    if (!localDocStore) {localDocStore = new LocalDocStore();}
 
     // Create optimized integration with same embedder as fallback
     optimizedPipeline = new OptimizedRAGIntegration(
@@ -166,7 +166,7 @@ async function getRagPipeline(): Promise<DefaultRAGPipeline> {
     });
 
     // Initialize local doc store
-    if (!localDocStore) localDocStore = new LocalDocStore();
+    if (!localDocStore) {localDocStore = new LocalDocStore();}
 
     // Initialize embedder with Google's new model
     const embedder = new GoogleEmbedder();
@@ -608,9 +608,9 @@ function dedupeCitations(citations: Citation[]): { displayCitations: Citation[];
     } else {
       const entry = byKey.get(key)!;
       // Merge non-critical fields conservatively
-      if (!entry.citation.title && c.title) entry.citation.title = c.title;
-      if (!entry.citation.sectionAnchor && c.sectionAnchor) entry.citation.sectionAnchor = c.sectionAnchor;
-      if (c.snippet && !entry.snippets.includes(c.snippet)) entry.snippets.push(c.snippet);
+      if (!entry.citation.title && c.title) {entry.citation.title = c.title;}
+      if (!entry.citation.sectionAnchor && c.sectionAnchor) {entry.citation.sectionAnchor = c.sectionAnchor;}
+      if (c.snippet && !entry.snippets.includes(c.snippet)) {entry.snippets.push(c.snippet);}
       entry.firstIndex = Math.min(entry.firstIndex, i);
     }
   }
@@ -620,7 +620,7 @@ function dedupeCitations(citations: Citation[]): { displayCitations: Citation[];
 
   for (const entry of byKey.values()) {
     const mergedSnippet = entry.snippets.join('\n...\n');
-    if (mergedSnippet) entry.citation.snippet = cap(mergedSnippet);
+    if (mergedSnippet) {entry.citation.snippet = cap(mergedSnippet);}
     merged.push({ citation: entry.citation, firstIndex: entry.firstIndex });
   }
 

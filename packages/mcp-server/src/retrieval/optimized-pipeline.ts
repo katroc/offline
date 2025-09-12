@@ -1,8 +1,8 @@
 import type { Chunk, ConfluencePage } from '@app/shared';
+import { EnhancedEmbedder, HybridSimilarityCalculator, type EnhancedEmbeddingConfig } from '../llm/enhanced-embedder.js';
 import type { ChunkingConfig } from './chunker.js';
 import { SemanticChunker, type SemanticChunkingConfig } from './semantic-chunker.js';
 import { SimpleChunker } from './chunker.js';
-import { EnhancedEmbedder, HybridSimilarityCalculator, type EnhancedEmbeddingConfig } from '../llm/enhanced-embedder.js';
 import { EnhancedRetriever, type RetrievalConfig } from './enhanced-retriever.js';
 import { OptimizedVectorStore, type VectorStoreConfig } from './optimized-vector-store.js';
 import type { Embedder } from './interfaces.js';
@@ -274,17 +274,17 @@ export class OptimizedRAGPipeline {
       const text = chunk.text.trim();
       
       // Filter out very short chunks
-      if (text.length < 50) return false;
+      if (text.length < 50) {return false;}
       
       // Filter out chunks that are mostly whitespace or punctuation
       const alphanumericRatio = (text.match(/[a-zA-Z0-9]/g) || []).length / text.length;
-      if (alphanumericRatio < 0.5) return false;
+      if (alphanumericRatio < 0.5) {return false;}
       
       // Filter out chunks with low information content
       const uniqueWords = new Set(text.toLowerCase().split(/\s+/)).size;
       const totalWords = text.split(/\s+/).length;
       const lexicalDiversity = uniqueWords / totalWords;
-      if (lexicalDiversity < 0.3) return false;
+      if (lexicalDiversity < 0.3) {return false;}
       
       return true;
     });

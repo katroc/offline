@@ -1,5 +1,5 @@
-import { embed, type EmbedOptions } from './embeddings.js';
 import type { Embedder } from '../retrieval/interfaces.js';
+import { embed, type EmbedOptions } from './embeddings.js';
 
 export interface GoogleEmbedderConfig {
   baseUrl?: string;
@@ -23,11 +23,11 @@ export class GoogleEmbedder implements Embedder {
     // Normalize to unit length for stable cosine similarity across models
     return raw.map(vec => {
       let norm = 0;
-      for (let i = 0; i < vec.length; i++) norm += vec[i] * vec[i];
+      for (let i = 0; i < vec.length; i++) {norm += vec[i] * vec[i];}
       norm = Math.sqrt(norm);
-      if (!isFinite(norm) || norm === 0) return vec;
+      if (!isFinite(norm) || norm === 0) {return vec;}
       const out = new Array(vec.length);
-      for (let i = 0; i < vec.length; i++) out[i] = vec[i] / norm;
+      for (let i = 0; i < vec.length; i++) {out[i] = vec[i] / norm;}
       return out;
     });
   }

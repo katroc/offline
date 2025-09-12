@@ -1,11 +1,12 @@
-import type { Chunk, Filters, Citation } from '@app/shared';
+import type { Chunk, Filters, Citation, ConfluencePage } from '@app/shared';
 import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces.js';
 import { LocalDocStore } from '../store/local-doc-store.js';
-import { GoogleEmbedder } from '../llm/google-embedder.js';
-import type { VectorStore } from './vector-store.js';
+import type { VectorStore, VectorSearchResult } from './vector-store.js';
 import type { Chunker } from './chunker.js';
 import type { Embedder } from './interfaces.js';
+import { GoogleEmbedder } from '../llm/google-embedder.js';
 import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
+import { LLMDocumentAnalyzer, type ConversationContext } from './llm-document-analyzer.js';
 import { SimpleChunker } from './chunker.js';
 
 export interface RAGPipeline {
@@ -28,13 +29,27 @@ export interface RetrievalResult {
 
 export interface UnifiedPipelineConfig {
   strategy: 'default' | 'smart' | 'optimized';
+
+  // Common components
   documentClient: DocumentSourceClient;
   vectorStore?: VectorStore;
   chunker?: Chunker;
   embedder?: Embedder;
   localDocStore?: LocalDocStore;
+
+  // Strategy-specific options
+  smartOptions?: {
+    enableConversationContext: boolean;
+    broadSearchLimit: number;
+    smartThreshold: number;
+    allowAnswersQueryBypass: boolean;
+  };
+
   optimizedOptions?: {
+    enableParallelProcessing: boolean;
+    enableQualityMetrics: boolean;
     enableContentFiltering: boolean;
+    minChunkQualityScore: number;
   };
 }
 
@@ -75,12 +90,14 @@ export class UnifiedRAGPipeline implements RAGPipeline {
     return this.strategy.deleteDocument(pageId);
   }
 
+  // Allow runtime strategy switching
   updateStrategy(strategy: 'default' | 'smart' | 'optimized'): void {
     this.config.strategy = strategy;
     this.strategy = this.createStrategy();
   }
 }
 
+// Strategy interface
 interface RetrievalStrategy {
   retrieveForQuery(
     queries: string | string[],
@@ -94,8 +111,10 @@ interface RetrievalStrategy {
   deleteDocument(pageId: string): Promise<void>;
 }
 
+// Default strategy (consolidated from DefaultRAGPipeline)
 class DefaultRetrievalStrategy implements RetrievalStrategy {
   private embedder: Embedder;
+  private conversationMemory = new Map<string, string[]>();
 
   constructor(private config: UnifiedPipelineConfig) {
     this.embedder = config.embedder || new GoogleEmbedder();
@@ -106,7 +125,7 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
     filters: Filters,
     topK: number,
     model?: string,
-    _conversationId?: string,
+    conversationId?: string,
     intent?: { intent: string; confidence: number; normalizedQuery?: string }
   ): Promise<RetrievalResult> {
     const variants = Array.isArray(queries) ? queries : [queries];
@@ -122,7 +141,7 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
       const q = limited[i];
       console.log(`RAG Pipeline: Attempt ${i + 1}/${limited.length} with query: "${q}"`);
       const res = await this.retrieveSingleQuery(q, filters, topK, model);
-      if (res.chunks.length > 0) {return res;}
+      if (res.chunks.length > 0) return res;
       lastResult = res;
     }
     return lastResult;
@@ -137,7 +156,8 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
       if (queryEmbedding.length > 0 && this.config.vectorStore) {
         const minCandidates = Math.max(topK, parseInt(process.env.MIN_VECTOR_RESULTS || '3', 10) || 3);
         const maxCandidatesCap = Math.max(10, parseInt(process.env.MAX_VECTOR_CANDIDATES || '50', 10) || 50);
-        const candidateK = Math.min(Math.max(topK * 5, minCandidates), maxCandidatesCap);
+        const poolMult = Math.max(2, parseInt(process.env.MMR_POOL_MULTIPLIER || String(topK * 2), 10) || topK * 5);
+        const candidateK = Math.min(Math.max(topK * 5, poolMult, minCandidates), maxCandidatesCap);
         const vectorResults = await this.config.vectorStore.searchSimilar(queryEmbedding[0], filters, candidateK, query);
 
         if (vectorResults.length > 0) {
@@ -175,7 +195,7 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
     }
 
     // 3. Use LLM to rank documents by relevance
-    if (documents.length === 0) {return { chunks: [], citations: [] };}
+    if (documents.length === 0) return { chunks: [], citations: [] };
 
     const rankedResults = await rankDocumentsByRelevance(query, documents, Math.min(topK, documents.length), model);
     const chunks = await this.documentsToChunks(query, rankedResults, topK);
@@ -191,13 +211,8 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
     for (const result of rankedResults.slice(0, topK)) {
       const doc = result.document;
       const page = {
-        id: doc.id,
-        title: doc.title,
-        spaceKey: doc.spaceKey,
-        version: doc.version,
-        labels: doc.labels,
-        updatedAt: doc.updatedAt,
-        url: doc.url
+        id: doc.id, title: doc.title, spaceKey: doc.spaceKey,
+        version: doc.version, labels: doc.labels, updatedAt: doc.updatedAt, url: doc.url
       };
 
       try {
@@ -207,8 +222,8 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
           score: simpleTextRelevanceScore(query, ch.text, ch.title)
         })).sort((a, b) => b.score - a.score);
 
-        if (scored.length > 0) {chunks.push(scored[0].chunk);}
-        if (chunks.length >= topK) {break;}
+        if (scored.length > 0) chunks.push(scored[0].chunk);
+        if (chunks.length >= topK) break;
       } catch (e) {
         console.warn('Chunking failed for document:', doc.id, e);
       }
@@ -217,13 +232,13 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
     return chunks;
   }
 
-  private applyMMR(results: any[], queryVector: number[], topK: number): any[] {
-    if (results.length <= topK) {return results;}
+  private applyMMR(results: VectorSearchResult[], queryVector: number[], topK: number): VectorSearchResult[] {
+    if (results.length <= topK) return results;
 
-    const selected: any[] = [];
+    const selected: VectorSearchResult[] = [];
     const remaining = [...results];
 
-    if (remaining.length > 0) {selected.push(remaining.shift()!);}
+    if (remaining.length > 0) selected.push(remaining.shift()!);
 
     const lambda = Number.isFinite(Number(process.env.MMR_LAMBDA)) ? Number(process.env.MMR_LAMBDA) : 0.7;
 
@@ -259,7 +274,7 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) {return 0;}
+    if (a.length !== b.length) return 0;
     let dotProduct = 0, normA = 0, normB = 0;
     for (let i = 0; i < a.length; i++) {
       dotProduct += a[i] * b[i];
@@ -287,16 +302,11 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
   }
 
   async indexDocument(document: DocumentSource): Promise<void> {
-    if (!this.config.vectorStore || !this.config.chunker) {return;}
+    if (!this.config.vectorStore || !this.config.chunker) return;
 
     const page = {
-      id: document.id,
-      title: document.title,
-      spaceKey: document.spaceKey,
-      version: document.version,
-      labels: document.labels,
-      updatedAt: document.updatedAt,
-      url: document.url
+      id: document.id, title: document.title, spaceKey: document.spaceKey,
+      version: document.version, labels: document.labels, updatedAt: document.updatedAt, url: document.url
     };
 
     const chunks = await this.config.chunker.chunkDocument(page, document.content);
@@ -317,8 +327,11 @@ class DefaultRetrievalStrategy implements RetrievalStrategy {
   }
 }
 
+// Smart strategy (consolidated from SmartRAGPipeline)
 class SmartRetrievalStrategy implements RetrievalStrategy {
+  private analyzer = new LLMDocumentAnalyzer();
   private chunker = new SimpleChunker({ targetChunkSize: 800, maxChunkSize: 1200, overlap: 200 });
+  private conversationMemory = new Map<string, string[]>();
 
   constructor(private config: UnifiedPipelineConfig) {}
 
@@ -330,6 +343,7 @@ class SmartRetrievalStrategy implements RetrievalStrategy {
     conversationId?: string,
     intent?: { intent: string; confidence: number; normalizedQuery?: string }
   ): Promise<RetrievalResult> {
+    const convKey = conversationId || 'global';
     const variants = Array.isArray(queries) ? queries : [queries];
     const maxFallbacks = Math.max(0, parseInt(process.env.MAX_FALLBACK_QUERIES || '3', 10) || 3);
     const limited = variants.slice(0, 1 + maxFallbacks);
@@ -341,23 +355,36 @@ class SmartRetrievalStrategy implements RetrievalStrategy {
     let lastResult: RetrievalResult = { chunks: [], citations: [] };
     for (let i = 0; i < limited.length; i++) {
       const q = limited[i];
-      console.log(`Smart RAG: Attempt ${i + 1}/${limited.length} with query: "${q}"`);
-      const res = await this.retrieveSingleQuery(q, filters, topK, model);
-      if (res.chunks.length > 0) {return res;}
+      console.log(`Smart RAG: Attempt ${i + 1}/${limited.length} with query: "${q}" (conv=${convKey})`);
+      const res = await this.retrieveSingleQuery(q, filters, topK, model, convKey);
+      if (res.chunks.length > 0) return res;
       lastResult = res;
     }
     return lastResult;
   }
 
-  private async retrieveSingleQuery(query: string, filters: Filters, topK: number, model?: string): Promise<RetrievalResult> {
+  private async retrieveSingleQuery(query: string, filters: Filters, topK: number, model: string | undefined, convKey: string): Promise<RetrievalResult> {
     try {
-      // Get broad document set
-      const broadDocuments = await this.getBroadDocumentSet(query, filters);
-      if (broadDocuments.length === 0) {return { chunks: [], citations: [] };}
+      const context = this.config.smartOptions?.enableConversationContext
+        ? await this.analyzer.extractConversationContext(this.conversationMemory.get(convKey) || [], model)
+        : { previousQueries: [], topicContext: [], entities: [] };
 
-      // Use LLM to rank documents by relevance
-      const rankedResults = await rankDocumentsByRelevance(query, broadDocuments, Math.min(topK, broadDocuments.length), model);
-      const chunks = await this.documentsToChunks(query, rankedResults, topK);
+      const broadDocuments = await this.getBroadDocumentSet(query, filters);
+      if (broadDocuments.length === 0) return { chunks: [], citations: [] };
+
+      const analyses = await this.analyzer.analyzeDocuments(query, broadDocuments, context, model);
+      const smartThreshold = this.config.smartOptions?.smartThreshold || parseFloat(process.env.SMART_RAG_THRESHOLD || '0.3');
+      const allowAnswersQueryBypass = this.config.smartOptions?.allowAnswersQueryBypass !== false;
+
+      const relevantAnalyses = analyses.filter(a =>
+        a.relevanceScore > smartThreshold || (allowAnswersQueryBypass && a.answersQuery)
+      );
+
+      if (relevantAnalyses.length === 0) {
+        return await this.cqlFallback(query, filters, topK, model);
+      }
+
+      const chunks = await this.analysesToChunks(query, relevantAnalyses, topK);
       const citations = this.chunksToCitations(chunks);
 
       return { chunks, citations };
@@ -368,11 +395,12 @@ class SmartRetrievalStrategy implements RetrievalStrategy {
   }
 
   private async getBroadDocumentSet(query: string, filters: Filters): Promise<DocumentSource[]> {
+    const limit = this.config.smartOptions?.broadSearchLimit || 20;
     try {
       const response = await this.config.documentClient.searchDocuments({
-        query: this.buildBroadQuery(query), ...filters, limit: 20
+        query: this.buildBroadQuery(query), ...filters, limit
       });
-      return response.documents.slice(0, 20);
+      return response.documents.slice(0, limit);
     } catch (error) {
       console.warn('Broad keyword search failed:', error);
       return [];
@@ -391,34 +419,43 @@ class SmartRetrievalStrategy implements RetrievalStrategy {
     return Array.from(new Set(tokens)).slice(0, 4).join(' ');
   }
 
-  private async documentsToChunks(query: string, rankedResults: any[], topK: number): Promise<Chunk[]> {
+  private async analysesToChunks(query: string, analyses: any[], topK: number): Promise<Chunk[]> {
     const chunks: Chunk[] = [];
 
-    for (const result of rankedResults.slice(0, topK)) {
-      const doc = result.document;
-      const page = {
-        id: doc.id,
-        title: doc.title,
-        spaceKey: doc.spaceKey,
-        version: doc.version,
-        labels: doc.labels,
-        updatedAt: doc.updatedAt,
-        url: doc.url
-      };
+    for (const analysis of analyses.slice(0, topK)) {
+      const doc = analysis.document;
 
-      try {
+      if (analysis.relevantSections && analysis.relevantSections.length > 0) {
+        for (const section of analysis.relevantSections.slice(0, 2)) {
+          chunks.push({
+            id: `chunk-${doc.id}-${chunks.length}`,
+            pageId: doc.id,
+            space: doc.spaceKey,
+            title: doc.title,
+            sectionAnchor: undefined,
+            text: section,
+            version: doc.version,
+            updatedAt: doc.updatedAt,
+            labels: doc.labels,
+            url: doc.url
+          });
+        }
+      } else {
+        const page = {
+          id: doc.id, title: doc.title, spaceKey: doc.spaceKey,
+          version: doc.version, labels: doc.labels, updatedAt: doc.updatedAt, url: doc.url
+        };
+
         const docChunks = await this.chunker.chunkDocument(page, doc.content);
         const scored = docChunks.map(ch => ({
           chunk: ch,
           score: simpleTextRelevanceScore(query, ch.text, ch.title)
         })).sort((a, b) => b.score - a.score);
 
-        if (scored.length > 0) {chunks.push(scored[0].chunk);}
-      } catch (e) {
-        console.warn('Chunking failed for document:', doc.id, e);
+        if (scored.length > 0) chunks.push(scored[0].chunk);
       }
 
-      if (chunks.length >= topK) {break;}
+      if (chunks.length >= topK) break;
     }
 
     return chunks;
@@ -430,18 +467,13 @@ class SmartRetrievalStrategy implements RetrievalStrategy {
         query, ...filters, limit: topK
       });
 
-      if (response.documents.length === 0) {return { chunks: [], citations: [] };}
+      if (response.documents.length === 0) return { chunks: [], citations: [] };
 
       const chunks: Chunk[] = [];
       for (const doc of response.documents.slice(0, topK)) {
         const page = {
-          id: doc.id,
-          title: doc.title,
-          spaceKey: doc.spaceKey,
-          version: doc.version,
-          labels: doc.labels,
-          updatedAt: doc.updatedAt,
-          url: doc.url
+          id: doc.id, title: doc.title, spaceKey: doc.spaceKey,
+          version: doc.version, labels: doc.labels, updatedAt: doc.updatedAt, url: doc.url
         };
 
         const docChunks = await this.chunker.chunkDocument(page, doc.content);
@@ -450,7 +482,7 @@ class SmartRetrievalStrategy implements RetrievalStrategy {
           score: simpleTextRelevanceScore(query, ch.text, ch.title)
         })).sort((a, b) => b.score - a.score);
 
-        if (scored.length > 0) {chunks.push(scored[0].chunk);}
+        if (scored.length > 0) chunks.push(scored[0].chunk);
       }
 
       return { chunks, citations: this.chunksToCitations(chunks) };
@@ -486,13 +518,20 @@ class SmartRetrievalStrategy implements RetrievalStrategy {
   }
 }
 
+// Optimized strategy (consolidated from OptimizedRAGPipeline)
 class OptimizedRetrievalStrategy implements RetrievalStrategy {
-  private chunker: Chunker;
-  private embedder: Embedder;
+  private chunker!: SimpleChunker;
+  private embedder!: Embedder;
+  private processingMetrics!: any;
 
   constructor(private config: UnifiedPipelineConfig) {
-    this.chunker = config.chunker || new SimpleChunker({ targetChunkSize: 800, maxChunkSize: 1200, overlap: 200 });
-    this.embedder = config.embedder || new GoogleEmbedder();
+    this.initializeComponents();
+  }
+
+  private initializeComponents(): void {
+    this.chunker = new SimpleChunker({ targetChunkSize: 800, maxChunkSize: 1200, overlap: 200 });
+    this.embedder = this.config.embedder || new GoogleEmbedder();
+    this.resetMetrics();
   }
 
   async retrieveForQuery(
@@ -511,7 +550,7 @@ class OptimizedRetrievalStrategy implements RetrievalStrategy {
 
     try {
       const queryEmbedding = await this.embedder.embed([query]);
-      if (queryEmbedding.length === 0) {return { chunks: [], citations: [] };}
+      if (queryEmbedding.length === 0) return { chunks: [], citations: [] };
 
       const vectorResults = await this.config.vectorStore.searchSimilar(queryEmbedding[0], filters, topK, query);
       const chunks = vectorResults.map(r => r.chunk);
@@ -542,47 +581,59 @@ class OptimizedRetrievalStrategy implements RetrievalStrategy {
   }
 
   async indexDocument(document: DocumentSource): Promise<void> {
-    if (!this.config.vectorStore) {return;}
+    if (!this.config.vectorStore) return;
 
-    const page = {
-      id: document.id,
-      title: document.title,
-      spaceKey: document.spaceKey,
-      version: document.version,
-      labels: document.labels,
-      updatedAt: document.updatedAt,
-      url: document.url
-    };
+    const startTime = Date.now();
+    this.resetMetrics();
 
-    let chunks = await this.chunker.chunkDocument(page, document.content);
+    try {
+      const page = {
+        id: document.id, title: document.title, spaceKey: document.spaceKey,
+        version: document.version, labels: document.labels, updatedAt: document.updatedAt, url: document.url
+      };
 
-    // Apply content filtering if enabled
-    if (this.config.optimizedOptions?.enableContentFiltering) {
-      chunks = this.filterChunks(chunks);
+      let chunks = await this.chunker.chunkDocument(page, document.content);
+      this.processingMetrics.chunksProcessed = chunks.length;
+
+      if (this.config.optimizedOptions?.enableContentFiltering) {
+        const originalCount = chunks.length;
+        chunks = this.filterChunks(chunks);
+        this.processingMetrics.chunksFiltered = originalCount - chunks.length;
+      }
+
+      const embeddingStart = Date.now();
+      const texts = chunks.map(chunk => chunk.text);
+      const embeddings = await this.embedder.embed(texts);
+      this.processingMetrics.embeddingTime = Date.now() - embeddingStart;
+
+      for (let i = 0; i < chunks.length; i++) {
+        chunks[i].vector = embeddings[i];
+      }
+
+      const indexingStart = Date.now();
+      await this.config.vectorStore.upsertChunks(chunks);
+      this.processingMetrics.indexingTime = Date.now() - indexingStart;
+
+      this.processingMetrics.totalProcessingTime = Date.now() - startTime;
+
+    } catch (error) {
+      console.error('Document processing failed:', error);
+      throw new Error(`Failed to process document: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-
-    const texts = chunks.map(chunk => chunk.text);
-    const embeddings = await this.embedder.embed(texts);
-
-    for (let i = 0; i < chunks.length; i++) {
-      chunks[i].vector = embeddings[i];
-    }
-
-    await this.config.vectorStore.upsertChunks(chunks);
   }
 
   private filterChunks(chunks: Chunk[]): Chunk[] {
     return chunks.filter(chunk => {
       const text = chunk.text.trim();
-      if (text.length < 50) {return false;}
+      if (text.length < 50) return false;
 
       const alphanumericRatio = (text.match(/[a-zA-Z0-9]/g) || []).length / text.length;
-      if (alphanumericRatio < 0.5) {return false;}
+      if (alphanumericRatio < 0.5) return false;
 
       const uniqueWords = new Set(text.toLowerCase().split(/\s+/)).size;
       const totalWords = text.split(/\s+/).length;
       const lexicalDiversity = uniqueWords / totalWords;
-      if (lexicalDiversity < 0.3) {return false;}
+      if (lexicalDiversity < 0.3) return false;
 
       return true;
     });
@@ -593,7 +644,15 @@ class OptimizedRetrievalStrategy implements RetrievalStrategy {
       await this.config.vectorStore.deleteByPageId(pageId);
     }
   }
+
+  private resetMetrics(): void {
+    this.processingMetrics = {
+      chunkingTime: 0, embeddingTime: 0, indexingTime: 0, retrievalTime: 0,
+      totalProcessingTime: 0, chunksProcessed: 0, chunksFiltered: 0,
+      averageChunkQuality: 0, memoryUsage: 0
+    };
+  }
 }
 
 // Export the unified pipeline as the main interface
-export { UnifiedRAGPipeline as DefaultRAGPipeline };
+export { UnifiedRAGPipeline as DefaultRAGPipeline };</content>

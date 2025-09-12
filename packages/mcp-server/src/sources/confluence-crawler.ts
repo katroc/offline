@@ -25,12 +25,12 @@ export async function crawlSpace(
     const docs = batch.documents || [];
     
     for (const d of docs) {
-      if (updatedAfterDate && new Date(d.updatedAt) < updatedAfterDate) continue;
+      if (updatedAfterDate && new Date(d.updatedAt) < updatedAfterDate) {continue;}
       collected.push(d);
     }
 
     pagesFetched += 1;
-    if (docs.length < pageSize) break; // last page
+    if (docs.length < pageSize) {break;} // last page
     start += pageSize;
   }
 

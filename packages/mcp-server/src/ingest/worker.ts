@@ -49,7 +49,7 @@ async function main() {
       allSpaces = false;
     }
   }
-  if (spaces === null) spaces = uiCfg.spaces;
+  if (spaces === null) {spaces = uiCfg.spaces;}
 
   if (allSpaces) {
     try {
@@ -94,10 +94,10 @@ async function main() {
     while (processed < cfg.maxPagesPerTick) {
       await rl.waitTurn();
       const resp = await confluence.listPagesBySpace(space, start, limit);
-      if (!resp.documents || resp.documents.length === 0) break;
+      if (!resp.documents || resp.documents.length === 0) {break;}
 
       for (const doc of resp.documents) {
-        if (processed >= cfg.maxPagesPerTick) break;
+        if (processed >= cfg.maxPagesPerTick) {break;}
         processed++;
 
         const release = await sem.acquire();
@@ -110,7 +110,7 @@ async function main() {
       }
 
       start = resp.start + resp.limit;
-      if (resp.documents.length < limit) break; // no more pages
+      if (resp.documents.length < limit) {break;} // no more pages
     }
 
     await Promise.allSettled(tasks);
@@ -153,7 +153,7 @@ async function indexOne(
   };
 
   const chunks = await chunker.chunkDocument(page, doc.content);
-  if (chunks.length === 0) return;
+  if (chunks.length === 0) {return;}
 
   // Embed
   // Embed with batching and pacing
@@ -165,9 +165,9 @@ async function indexOne(
     const slice = allTexts.slice(i, i + batchSize);
     const res = await embedder.embed(slice);
     vectors.push(...res);
-    if (delayMs > 0 && i + batchSize < allTexts.length) await new Promise(r => setTimeout(r, delayMs));
+    if (delayMs > 0 && i + batchSize < allTexts.length) {await new Promise(r => setTimeout(r, delayMs));}
   }
-  for (let i = 0; i < chunks.length; i++) chunks[i].vector = vectors[i];
+  for (let i = 0; i < chunks.length; i++) {chunks[i].vector = vectors[i];}
 
   // Upsert to LanceDB
   await vector.upsertChunks(chunks);

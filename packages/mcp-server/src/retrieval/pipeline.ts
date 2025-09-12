@@ -1,10 +1,10 @@
 import type { Chunk, Filters, Citation } from '@app/shared';
 import type { DocumentSourceClient, DocumentSource } from '../sources/interfaces.js';
 import { LocalDocStore } from '../store/local-doc-store.js';
+import { GoogleEmbedder } from '../llm/google-embedder.js';
 import type { VectorStore, VectorSearchResult } from './vector-store.js';
 import type { Chunker } from './chunker.js';
 import type { Embedder } from './interfaces.js';
-import { GoogleEmbedder } from '../llm/google-embedder.js';
 import { rankDocumentsByRelevance, simpleTextRelevanceScore } from './llm-search.js';
 
 export interface RAGPipeline {
@@ -58,7 +58,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
       const q = limited[i];
       console.log(`RAG Pipeline: Attempt ${i + 1}/${limited.length} with query: "${q}"`);
       const res = await this.retrieveSingleQuery(q, filters, topK, model);
-      if (res.chunks.length > 0) return res;
+      if (res.chunks.length > 0) {return res;}
       lastResult = res;
     }
     return lastResult;
@@ -238,9 +238,9 @@ export class DefaultRAGPipeline implements RAGPipeline {
     const selected: Chunk[] = [];
 
     for (const s of scored.sort((a, b) => b.combined - a.combined)) {
-      if (selected.length >= topK) break;
+      if (selected.length >= topK) {break;}
       const count = byDocPicked[s.docId] || 0;
-      if (count >= perDocCap) continue;
+      if (count >= perDocCap) {continue;}
       selected.push(s.chunk);
       byDocPicked[s.docId] = count + 1;
     }
@@ -277,8 +277,8 @@ export class DefaultRAGPipeline implements RAGPipeline {
         // Simple weighting by repetition to bias the vector slightly towards title semantics
         parts.push(Array(Math.max(1, titleWeight)).fill(page.title).join('\n'));
       }
-      if (includeAnchor && ch.sectionAnchor) parts.push(String(ch.sectionAnchor));
-      if (includeLabels && Array.isArray(page.labels) && page.labels.length > 0) parts.push(page.labels.join(' '));
+      if (includeAnchor && ch.sectionAnchor) {parts.push(String(ch.sectionAnchor));}
+      if (includeLabels && Array.isArray(page.labels) && page.labels.length > 0) {parts.push(page.labels.join(' '));}
       parts.push(ch.text);
       return parts.filter(Boolean).join('\n\n');
     };
@@ -320,7 +320,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
   }
 
   private applyMMR(results: VectorSearchResult[], queryVector: number[], topK: number): VectorSearchResult[] {
-    if (results.length <= topK) return results;
+    if (results.length <= topK) {return results;}
 
     const selected: VectorSearchResult[] = [];
     const remaining = [...results];
@@ -336,7 +336,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
     
     while (selected.length < topK && remaining.length > 0) {
       let bestIndex = 0;
-      let bestScore = -Infinity;
+      const bestScore = -Infinity;
       const candidates: { index: number; score: number; id: string }[] = [];
 
       for (let i = 0; i < remaining.length; i++) {
@@ -397,7 +397,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
+    if (a.length !== b.length) {return 0;}
 
     let dotProduct = 0;
     let normA = 0;
@@ -409,7 +409,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
       normB += b[i] * b[i];
     }
 
-    if (normA === 0 || normB === 0) return 0;
+    if (normA === 0 || normB === 0) {return 0;}
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
@@ -482,7 +482,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
    */
   private triggerLazyValidation(chunks: Chunk[]): void {
     const ttlDays = parseInt(process.env.CHUNK_TTL_DAYS || '7', 10);
-    if (Number.isNaN(ttlDays) || ttlDays <= 0) return; // disabled
+    if (Number.isNaN(ttlDays) || ttlDays <= 0) {return;} // disabled
 
     const cutoffMs = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
     const stalePageIds = new Set<string>();
@@ -498,7 +498,7 @@ export class DefaultRAGPipeline implements RAGPipeline {
       }
     }
 
-    if (stalePageIds.size === 0) return;
+    if (stalePageIds.size === 0) {return;}
 
     setTimeout(async () => {
       try {
