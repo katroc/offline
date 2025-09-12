@@ -10,7 +10,7 @@ import { SimpleChunker } from './retrieval/chunker.js';
 import { DefaultRAGPipeline, type RetrievalResult } from './retrieval/pipeline.js';
 import { SmartRAGPipeline } from './retrieval/smart-pipeline.js';
 import { OptimizedRAGIntegration } from './retrieval/optimized-rag-integration.js';
-import { GoogleEmbedder } from './llm/google-embedder.js';
+import { GoogleEmbedder } from './llm/embeddings.js';
 import { QueryIntentProcessor, QueryIntent } from './retrieval/query-intent-processor.js';
 
 // Singleton instances (in production, these would be properly managed)

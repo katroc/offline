@@ -6,7 +6,7 @@ import type { ConfluenceClient } from '../sources/confluence.js';
 import { SimpleChunker } from '../retrieval/chunker.js';
 import { createVectorStore } from '../utils/vector-store-factory.js';
 import type { VectorStore } from '../retrieval/vector-store.js';
-import { GoogleEmbedder } from '../llm/google-embedder.js';
+import { GoogleEmbedder } from '../llm/embeddings.js';
 import { JsonStateStore } from './state.js';
 import { CrawlerConfigStore } from './config-store.js';
 import { normalizeHtml, sha256, Semaphore, RateLimiter } from './utils.js';
