@@ -104,6 +104,12 @@ export function deriveAnswerFromThinking(thinking: string): string {
   // Heuristic 3: If it looks like structured bullets, keep as-is
   if (/^[-*]\s+.+/m.test(t)) return t;
 
+  // Heuristic 4: If thinking is substantial but was cut off (no clear answer patterns),
+  // provide a helpful message instead of showing raw thinking
+  if (t.length > 200) {
+    return 'The response was cut off while generating. Please check the "Show thinking" section above for the partial content, or try asking again.';
+  }
+
   // No good extraction signal — don't leak thinking into the answer area
   return '';
 }

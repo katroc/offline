@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { RagQuery } from '@app/shared';
+import { stripThinking } from '@app/shared';
 import { SmartResponse } from './SmartResponse';
 import { LoadingProgress } from './components/LoadingProgress';
 import { HistoryPane, type HistoryConversation } from './components/HistoryPane';
 import { generateConversationTitle, shouldUpdateTitle } from './utils/titleSummarization';
-import { stripThinking, splitThinking, deriveAnswerFromThinking } from './utils/thinking';
+import { splitThinking, deriveAnswerFromThinking } from './utils/thinking';
 
 interface Message {
   id: string;
@@ -928,6 +929,15 @@ function App() {
               if (derived && derived.trim()) {
                 visibleAnswer = derived.trim();
               }
+            }
+            
+            // Debug logging for LLM responses (only in development)
+            if (process.env.NODE_ENV === 'development' && thinking && !visibleAnswer) {
+              console.log('Debug: LLM response with thinking but no answer derived');
+              console.log('Original content length:', (message.content || '').length);
+              console.log('Thinking length:', thinking.length);
+              console.log('Stripped answer length:', answer.length);
+              console.log('Derived answer length:', deriveAnswerFromThinking(thinking).length);
             }
             const prevQuery = index > 0 ? (current?.messages[index - 1]?.content || '') : '';
             const animate = animatingMessageId === message.id;
